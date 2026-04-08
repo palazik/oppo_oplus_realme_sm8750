@@ -686,20 +686,15 @@ jobs:
       - name: Add Localversion
         run: |
           cd kernel_workspace
-          echo "Replacing kernel suffix..."
+          echo "Fixing uname / kernel suffix..."
+          
+          # If you type a suffix (like 'palaziks'), this cleanly swaps the generic '-4k' 
+          # at the end of the Android 15 string with your suffix, keeping the letters!
           if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            echo "Current Kernel Suffix: ${{ github.event.inputs.kernel_suffix }}"
-            for f in ./common/scripts/setlocalversion; do
-              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ github.event.inputs.kernel_suffix }}\"|" "$f"
-            done
-            sudo sed -i 's/-4k/-${{ github.event.inputs.KERNEL_SUFFIX }}/g' ./common/arch/arm64/configs/gki_defconfig
-          else
-            echo "Current Kernel Suffix: ${{ env.KERNEL_NAME }}"
-            for f in ./common/scripts/setlocalversion; do
-              sed -i "\$s|echo \"\\\$res\"|echo \"-${{ env.KERNEL_NAME }}\"|" "$f"
-            done
-            sudo sed -i 's/-4k/-${{ env.KERNEL_NAME }}/g' ./common/arch/arm64/configs/gki_defconfig
+            sudo sed -i "s/-4k/-${{ github.event.inputs.kernel_suffix }}/g" ./common/arch/arm64/configs/gki_defconfig
           fi
+          
+          # Clean up Git hashes so no dirty '+' sign gets added
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
             
