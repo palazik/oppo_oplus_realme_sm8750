@@ -15,12 +15,12 @@ on:
         description: 'KernelSU Branch (ReSukiSU / SukiSU Ultra / KernelSU Next / KSU Official / none)'
         required: true
         type: choice
-        default: 'ksu'
+        default: 'ksunext'
         options:
-          - 'resukisu'
-          - 'sukisu'
           - 'ksunext'
           - 'ksu'
+          - 'sukisu'
+          - 'resukisu'
           - 'none'
       susfs_enable:
         description: 'Enable SuSFS (Enhances hide environment; might slightly increase battery usage)'
