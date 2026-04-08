@@ -353,6 +353,7 @@ jobs:
               string_arr.append(f'    "{h}"')
           
           matrix = ",\n".join(string_arr)
+          hash_count = len(hashes)
           
           c_block = f"""
           /* AUTO-GENERATED multi-manager hashes via apksigner */
@@ -361,7 +362,7 @@ jobs:
           static const char* const ksu_mm_hashes[] = {{
           {matrix}
           }};
-          #define KSU_MM_COUNT ARRAY_SIZE(ksu_mm_hashes)
+          #define KSU_MM_COUNT {hash_count}
 
           /* Ultimate validator using strcmp to match KernelSU v1.0.2+ logic */
           static inline bool ksu_is_mm_valid(const char *hash_str) {{
@@ -375,7 +376,7 @@ jobs:
           """
           with open('/tmp/mm_header.c', 'w') as f:
               f.write(c_block)
-          print("\nGenerated C block with inline string validator function.")
+          print(f"\nGenerated C block with {hash_count} hashes and inline string validator function.")
           PYEOF
 
           # ── Patch apk_sign.c (Smart string replacement) ───
@@ -414,7 +415,6 @@ jobs:
                sys.exit(1)
 
           # THE FIX: Inject our C code at the VERY TOP of the file (Line 1) 
-          # so the compiler reads our function BEFORE it reaches Line 110.
           src = hdr + "\n" + src
           
           open(apk_sign, "w").write(src)
@@ -861,7 +861,7 @@ jobs:
           ### 📱 OPPO/Realme/OnePlus ${{ env.KSU_TYPENAME }} SM8750 Generic Kernel | Build Info
           - **Kernel Version:** ${{ env.FULL_VERSION }}
           - **Build Time:** ${{ env.TIME_FORM }}
-          - **Device:** Snapdragon 8 Elite Generic ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Kernel (Based on OnePlus 13 Global ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Official OKI source)
+          - **Device:** Snapdragon 8 Elite Generic ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Kernel (Based on OnePlus 13 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Official OKI source)
           - **KSU Branch:** ${{ env.KSU_TYPENAME }}
           - **SuSFS Support:** ${{ github.event.inputs.susfs_enable }}
           - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
