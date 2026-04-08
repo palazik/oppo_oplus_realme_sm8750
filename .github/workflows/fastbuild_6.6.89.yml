@@ -334,9 +334,8 @@ jobs:
           # KernelSU-Next: normal + spoofed
           dl_apk "KernelSU-Next/KernelSU-Next" '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/ksunext.apk
           dl_apk "KernelSU-Next/KernelSU-Next" 'spoof.*\.apk$'            /tmp/manager_apks/ksunext_spoof.apk
-          # SukiSU-Ultra: normal + spoofed
-          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/sukisu.apk
-          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   'spoof.*\.apk$'            /tmp/manager_apks/sukisu_spoof.apk
+          # SukiSU-Ultra: normal
+          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '\.apk$'     /tmp/manager_apks/sukisu.apk
           # ReSukiSU: normal + spoofed
           dl_apk "ReSukiSU/ReSukiSU"           '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/resukisu.apk
           dl_apk "ReSukiSU/ReSukiSU"           'spoof.*\.apk$'            /tmp/manager_apks/resukisu_spoof.apk
