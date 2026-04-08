@@ -399,7 +399,7 @@ jobs:
 
           original_src = src
 
-          # 1. Kill the strict size check (the script will now bypass the size requirement)
+          # 1. Kill the strict size check
           src = re.sub(r'\*size4\s*==\s*expected_size', '1 /* mm size bypass */', src)
 
           # 2. Replace the strcmp hash check with our multi-manager loop
@@ -413,12 +413,12 @@ jobs:
                print("WARN: could not patch apk_sign.c (strcmp not found)")
                sys.exit(1)
 
-          # Inject our generated C header after the last #include
-          last = max((m.end() for m in re.finditer(r'#include\s+[<"][^>"]+[>"]', src)), default=0)
-          src = src[:last] + "\n" + hdr + src[last:]
+          # THE FIX: Inject our C code at the VERY TOP of the file (Line 1) 
+          # so the compiler reads our function BEFORE it reaches Line 110.
+          src = hdr + "\n" + src
           
           open(apk_sign, "w").write(src)
-          print(f"Done: {apk_sign} (Successfully injected Multi-Manager string validator!)")
+          print(f"Done: {apk_sign} (Successfully injected Multi-Manager string validator at the top of the file!)")
           PYEOF2
 
       - name: Apply SuSFS Patches
