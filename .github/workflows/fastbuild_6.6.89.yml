@@ -364,14 +364,23 @@ jobs:
           {matrix}
           }};
           #define KSU_MM_COUNT ARRAY_SIZE(ksu_mm_hashes)
+
+          /* Ультимативная проверка: пробегаем по всем скачанным хэшам */
+          static inline bool ksu_is_mm_valid(const u8 *hash) {{
+              int i;
+              for (i = 0; i < KSU_MM_COUNT; i++) {{
+                  if (!memcmp(hash, ksu_mm_hashes[i], 32))
+                      return true;
+              }}
+              return false;
+          }}
           """
           with open('/tmp/mm_header.c', 'w') as f:
               f.write(c_block)
-          print("\nGenerated C block:")
-          print(c_block)
+          print("\nGenerated C block with inline validator function.")
           PYEOF
 
-          # ── Патчим apk_sign.c ───────────────────
+          # ── Патчим apk_sign.c (Интеллектуальная замена логики) ───
           export APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -n 1)
           [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
           echo "Patching: $APK_SIGN"
@@ -390,44 +399,27 @@ jobs:
           if "ksu_mm_hashes" in src:
               print("Already patched"); sys.exit(0)
 
-          LOOP = """
-          {
-              int _i;
-              for (_i = 0; _i < KSU_MM_COUNT; _i++) {
-                  if (!memcmp(hash, ksu_mm_hashes[_i], 32))
-                      return true;
-              }
-          }"""
+          # 1. Отключаем проверку размера (size)
+          src, n_size1 = re.subn(r'\bsize\s*!=\s*KSU_EXPECTED_SIZE\b', '0 /* mm size bypass */', src)
+          src, n_size2 = re.subn(r'\bsize\s*!=\s*expected_size\b', '0 /* mm size bypass */', src)
 
-          pats = [
-              r'if\s*\([^)]*(?:size|apk_size)[^)]*(?:expected_size|KSU_EXPECTED_SIZE)[^)]*\)[^}]*?return\s+true\s*;',
-              r'if\s*\([^)]*(?:expected_size|KSU_EXPECTED_SIZE)[^)]*\)[^}]*?return\s+true\s*;',
-              r'if\s*\([^)]*memcmp[^}]*?return\s+true\s*;',
-          ]
-          replaced = False
-          for p in pats:
-              m = re.search(p, src, re.DOTALL)
-              if m:
-                  src = src[:m.start()] + LOOP + src[m.end():]
-                  replaced = True
-                  print("Replaced with multi-manager loop")
-                  break
+          # 2. Агрессивно заменяем вызовы memcmp на нашу C-функцию (перехватываем любые варианты)
+          src, n_hash1 = re.subn(r'memcmp\s*\(\s*hash\s*,[^)]+\)\s*!=\s*0', '!ksu_is_mm_valid(hash)', src)
+          src, n_hash2 = re.subn(r'memcmp\s*\(\s*hash\s*,[^)]+\)\s*==\s*0', 'ksu_is_mm_valid(hash)', src)
+          src, n_hash3 = re.subn(r'!\s*memcmp\s*\(\s*hash\s*,[^)]+\)', 'ksu_is_mm_valid(hash)', src)
 
-          if not replaced:
-              src = src.replace('size != expected_size', '0 /* mm */') \
-                       .replace('memcmp(hash, expected_hash, sizeof(expected_hash)) != 0', '0 /* mm */')
-              if '0 /* mm */' in src:
-                  replaced = True
-                  print("Applied fallback replacement")
+          total_hash_patches = n_hash1 + n_hash2 + n_hash3
 
-          if not replaced:
-               print("WARN: could not patch apk_sign.c")
+          if total_hash_patches == 0:
+               print("WARN: could not patch apk_sign.c (no memcmp block found)")
                sys.exit(0)
 
+          # Вставляем наш C-заголовок сразу после последнего #include
           last = max((m.end() for m in re.finditer(r'#include\s+[<"][^>"]+[>"]', src)), default=0)
           src = src[:last] + "\n" + hdr + src[last:]
+          
           open(apk_sign, "w").write(src)
-          print(f"Done: {apk_sign}")
+          print(f"Done: {apk_sign} (Successfully injected validator into {total_hash_patches} places!)")
           PYEOF2
 
       - name: Apply SuSFS Patches
