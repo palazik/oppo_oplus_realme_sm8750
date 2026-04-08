@@ -332,12 +332,8 @@ jobs:
           # KernelSU-Next — normal + spoofed
           download_latest_apk "KernelSU-Next/KernelSU-Next" "(?i)(?!.*spoof).*\.apk$" /tmp/manager_apks/ksunext.apk
           download_latest_apk "KernelSU-Next/KernelSU-Next" "(?i)spoof.*\.apk$"        /tmp/manager_apks/ksunext_spoof.apk
-          # SukiSU-Ultra — normal + spoofed
-          download_latest_apk "SukiSU-Ultra/SukiSU-Ultra"   "(?i)(?!.*spoof).*\.apk$" /tmp/manager_apks/sukisu.apk
-          download_latest_apk "SukiSU-Ultra/SukiSU-Ultra"   "(?i)spoof.*\.apk$"        /tmp/manager_apks/sukisu_spoof.apk
-          # ReSukiSU — normal + spoofed
-          download_latest_apk "ReSukiSU/ReSukiSU"           "(?i)(?!.*spoof).*\.apk$" /tmp/manager_apks/resukisu.apk
-          download_latest_apk "ReSukiSU/ReSukiSU"           "(?i)spoof.*\.apk$"        /tmp/manager_apks/resukisu_spoof.apk
+          # SukiSU-Ultra — normal
+          download_latest_apk "SukiSU-Ultra/SukiSU-Ultra"          "\.apk$"          /tmp/manager_apks/sukisu.apk
           # WildKSU
           download_latest_apk "WildKernels/Wild_KSU"        "\.apk$"                   /tmp/manager_apks/wildksu.apk
 
