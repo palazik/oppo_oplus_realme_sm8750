@@ -371,8 +371,8 @@ jobs:
           print(c_block)
           PYEOF
 
-          # ── Патчим apk_sign.c (без проверки size) ───────────────────
-          APK_SIGN=$(find kernel_workspace/common -name "apk_sign.c" | head -1)
+          # ── Патчим apk_sign.c ───────────────────
+          export APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -n 1)
           [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
           echo "Patching: $APK_SIGN"
 
@@ -390,7 +390,6 @@ jobs:
           if "ksu_mm_hashes" in src:
               print("Already patched"); sys.exit(0)
 
-          # Цикл, сравнивающий ровно 32 байта, игнорируя size
           LOOP = """
           {
               int _i;
@@ -415,13 +414,13 @@ jobs:
                   break
 
           if not replaced:
-              # Фолбек замена
               src = src.replace('size != expected_size', '0 /* mm */') \
                        .replace('memcmp(hash, expected_hash, sizeof(expected_hash)) != 0', '0 /* mm */')
               if '0 /* mm */' in src:
+                  replaced = True
                   print("Applied fallback replacement")
 
-          if not replaced and '0 /* mm */' not in src:
+          if not replaced:
                print("WARN: could not patch apk_sign.c")
                sys.exit(0)
 
@@ -429,67 +428,6 @@ jobs:
           src = src[:last] + "\n" + hdr + src[last:]
           open(apk_sign, "w").write(src)
           print(f"Done: {apk_sign}")
-          PYEOF2
-
-          # ── Патчим apk_sign.c ─────────────────────────────────────────────
-          APK_SIGN=$(find kernel_workspace/common -name "apk_sign.c" | head -1)
-          [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
-          echo "Patching: $APK_SIGN"
-
-          python3 << PYEOF2
-          import re, sys
-
-          src = open("$APK_SIGN").read()
-          hdr = open("/tmp/mm_header.c").read()
-
-          if "ksu_mm_sizes" in src:
-              print("Already patched"); sys.exit(0)
-
-          # Петля замены — находим любую проверку size+hash и заменяем на цикл
-          LOOP = """
-          {
-              int _i;
-              for (_i = 0; _i < KSU_MM_COUNT; _i++) {
-                  if ((u32)size == ksu_mm_sizes[_i] &&
-                      !memcmp(hash, ksu_mm_hashes[_i],
-                              strlen(ksu_mm_hashes[_i])))
-                      return true;
-              }
-          }"""
-
-          # Паттерны под все известные форки KSU (tiann / Next / SukiSU / ReSukiSU)
-          pats = [
-              r'if\s*\([^)]*(?:size|apk_size)[^)]*(?:expected_size|KSU_EXPECTED_SIZE)[^)]*\)[^}]*?return\s+true\s*;',
-              r'if\s*\([^)]*(?:expected_size|KSU_EXPECTED_SIZE)[^)]*\)[^}]*?return\s+true\s*;',
-              r'if\s*\([^)]*memcmp[^}]*?return\s+true\s*;',
-          ]
-          replaced = False
-          for p in pats:
-              m = re.search(p, src, re.DOTALL)
-              if m:
-                  src = src[:m.start()] + LOOP + src[m.end():]
-                  replaced = True
-                  print(f"Replaced with multi-manager loop")
-                  break
-
-          if not replaced:
-              # Последний резерв: заменяем условия напрямую (как в оригинальном патче)
-              src = src.replace('size != expected_size', '0 /* mm */') \
-                       .replace('memcmp(hash, expected_hash, sizeof(expected_hash)) != 0', '0 /* mm */')
-              if '0 /* mm */' in src:
-                  replaced = True
-                  print("Applied fallback replacement")
-
-          if not replaced:
-              print("WARN: could not patch apk_sign.c — manager detection unchanged")
-              sys.exit(0)
-
-          # Вставляем заголовок после последнего #include
-          last = max((m.end() for m in re.finditer(r'#include\s+[<"][^>"]+[>"]', src)), default=0)
-          src = src[:last] + "\n" + hdr + src[last:]
-
-          open("$APK_SIGN", "w").write(src)
-          print(f"Done: {\"$APK_SIGN\"}")
           PYEOF2
 
       - name: Apply SuSFS Patches
