@@ -89,7 +89,7 @@ on:
         description: 'Kernel Suffix (leave empty for default, no spaces/special chars)'
         required: false
         type: string
-        default: 'palaziks'
+        default: 'next-palaziks'
       lto_type:
         description: 'LTO Optimization (none = fast compile, thin = default, full = slow)'
         required: true
