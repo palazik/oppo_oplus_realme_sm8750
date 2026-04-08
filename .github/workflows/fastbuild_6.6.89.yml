@@ -484,15 +484,17 @@ jobs:
           [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
           echo "==> Patching: $APK_SIGN"
 
+          # ── Patch is_manager_apk() в apk_sign.c ──────────────────────────
+          APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -1)
+          [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
+          echo "==> Patching: $APK_SIGN"
+
           python3 << 'PYEOF2'
-          import re, sys
+          import re, sys, subprocess
 
           entries_file = '/tmp/mm_entries.txt'
-          apk_sign_path = None
-          import subprocess, os
-          # find apk_sign.c
-          r = subprocess.run(['find','kernel_workspace','-name','apk_sign.c'],
-                             capture_output=True, text=True)
+          
+          r = subprocess.run(['find','kernel_workspace','-name','apk_sign.c'], capture_output=True, text=True)
           apk_sign_path = r.stdout.strip().split('\n')[0]
           if not apk_sign_path:
               print("apk_sign.c not found"); sys.exit(0)
@@ -500,8 +502,12 @@ jobs:
           with open(apk_sign_path) as f:
               src = f.read()
 
-          if 'ksu_mm_check' in src:
+          if 'ksu_mm_check' in src or 'multi-manager: palaziks build' in src:
               print("Already patched"); sys.exit(0)
+
+          # --- ИСПРАВЛЕНИЕ 1: Уничтожаем блокировки v3 и количества блоков внутри check_v2_signature ---
+          src = src.replace('if (v3_signing_exist || v3_1_signing_exist)', 'if (0 /* mm v3 bypass */)')
+          src = src.replace('if (v2_signing_blocks != 1)', 'if (0 /* mm blocks bypass */)')
 
           # Читаем entries
           managers = []
@@ -517,9 +523,6 @@ jobs:
           if not managers:
               print("No managers in entries file"); sys.exit(1)
 
-          # Генерируем новое тело is_manager_apk()
-          # Структура: для каждого менеджера вызываем check_v2_signature()
-          # с его конкретными size и hash. Если хоть один вернул true — return true.
           checks = []
           for name, size, h in managers:
               checks.append(
@@ -528,6 +531,7 @@ jobs:
               )
           checks_str = '\n'.join(checks)
 
+          # --- ИСПРАВЛЕНИЕ 2: Отключаем блокировку по имени пакета ---
           new_func = f'''bool is_manager_apk(char *path)
           {{
           #ifdef KSU_MANAGER_PACKAGE
@@ -536,26 +540,22 @@ jobs:
                   pr_err("Failed to get package name from apk path: %s\\n", path);
                   return false;
               }}
-              if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {{
-                  return false;
-              }}
+              
+              /* БЛОКИРОВКА ПАКЕТА ОТКЛЮЧЕНА ДЛЯ MULTI-MANAGER */
+              // if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {{
+              //     return false;
+              // }}
           #endif
+              
               /* multi-manager: palaziks build */
           {checks_str}
               return false;
           }}'''
 
-          # Заменяем существующую is_manager_apk() функцию целиком
-          # Паттерн матчит всё от "bool is_manager_apk" до закрывающей скобки
-          pat = re.compile(
-              r'bool\s+is_manager_apk\s*\([^)]*\)\s*\{.*?\n\}',
-              re.DOTALL
-          )
+          pat = re.compile(r'bool\s+is_manager_apk\s*\([^)]*\)\s*\{.*?\n\}', re.DOTALL)
           m = pat.search(src)
           if not m:
               print(f"ERROR: is_manager_apk() not found in {apk_sign_path}")
-              print("First 3000 chars of file:")
-              print(src[:3000])
               sys.exit(1)
 
           new_src = src[:m.start()] + new_func + src[m.end():]
@@ -563,7 +563,7 @@ jobs:
           with open(apk_sign_path, 'w') as f:
               f.write(new_src)
 
-          print(f"Patched {apk_sign_path}: {len(managers)} managers injected")
+          print(f"Patched {apk_sign_path}: {len(managers)} managers injected, v3 & pkg locks bypassed!")
           for name, size, h in managers:
               print(f"  {name}: 0x{size:x} {h}")
           PYEOF2
