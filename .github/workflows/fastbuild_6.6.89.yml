@@ -411,25 +411,32 @@ jobs:
         if: inputs.susfs_enable
         run: |
           cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} != "none" ]]; then
-            echo "Adding SuSFS patches..."
-            git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch || touch ./common/69_hide_stuff.patch
-            cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-            cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-            cd ./common
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            patch -p1 -N -F 3 < 69_hide_stuff.patch || true
-            cd ..
-          else
-            echo "No built-in KSU selected, skipping SuSFS..."
+          echo "Adding SuSFS patches..."
+          git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
+          
+          # Копируем файлы драйвера
+          cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          
+          cd ./common
+          # Применяем патч ядра
+          patch -p1 < ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+          
+          # РЕШЕНИЕ: Прописываем драйвер в Makefile, чтобы Linker его увидел
+          if [ -f fs/susfs.c ]; then
+              echo "obj-y += susfs.o" >> fs/Makefile
+              echo "SuSFS driver added to fs/Makefile"
           fi
+          
+          cd ..
+
+          # Патч для Official KSU (нужен только если выбран 'ksu')
           if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            echo "Adding SuSFS patch for Official KernelSU..."
+            echo "Applying SuSFS integration for Official KSU..."
             cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 < 10_enable_susfs_for_ksu.patch || true
+            cd ..
           fi
           
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
@@ -484,6 +491,7 @@ jobs:
         run: |
           cd kernel_workspace
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_DEBUG_INFO_BTF=n" >> ./common/arch/arm64/configs/gki_defconfig
           if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
