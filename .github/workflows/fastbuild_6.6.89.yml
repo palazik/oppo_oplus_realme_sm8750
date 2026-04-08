@@ -365,14 +365,14 @@ jobs:
           }};
           #define KSU_MM_COUNT ARRAY_SIZE(ksu_mm_hashes)
 
-          /* Ультимативная проверка: пробегаем по всем скачанным хэшам */
-          static inline bool ksu_is_mm_valid(const u8 *hash) {{
+          /* Ультимативная проверка: имитирует поведение memcmp */
+          static inline int ksu_mm_cmp(const u8 *hash) {{
               int i;
               for (i = 0; i < KSU_MM_COUNT; i++) {{
                   if (!memcmp(hash, ksu_mm_hashes[i], 32))
-                      return true;
+                      return 0; /* Нашли совпадение! Возвращаем 0 как настоящий memcmp */
               }}
-              return false;
+              return 1; /* Совпадений нет, возвращаем ошибку */
           }}
           """
           with open('/tmp/mm_header.c', 'w') as f:
@@ -399,18 +399,22 @@ jobs:
           if "ksu_mm_hashes" in src:
               print("Already patched"); sys.exit(0)
 
+          original_src = src
+
           # 1. Отключаем проверку размера (size)
-          src, n_size1 = re.subn(r'\bsize\s*!=\s*KSU_EXPECTED_SIZE\b', '0 /* mm size bypass */', src)
-          src, n_size2 = re.subn(r'\bsize\s*!=\s*expected_size\b', '0 /* mm size bypass */', src)
+          src = re.sub(r'\bsize\s*!=\s*KSU_EXPECTED_SIZE\b', '0 /* mm size bypass */', src)
+          src = re.sub(r'\bsize\s*!=\s*expected_size\b', '0 /* mm size bypass */', src)
 
-          # 2. Агрессивно заменяем вызовы memcmp на нашу C-функцию (перехватываем любые варианты)
-          src, n_hash1 = re.subn(r'memcmp\s*\(\s*hash\s*,[^)]+\)\s*!=\s*0', '!ksu_is_mm_valid(hash)', src)
-          src, n_hash2 = re.subn(r'memcmp\s*\(\s*hash\s*,[^)]+\)\s*==\s*0', 'ksu_is_mm_valid(hash)', src)
-          src, n_hash3 = re.subn(r'!\s*memcmp\s*\(\s*hash\s*,[^)]+\)', 'ksu_is_mm_valid(hash)', src)
+          # 2. Агрессивно заменяем вызовы memcmp на нашу C-функцию ksu_mm_cmp(hash)
+          # Прямая замена строк (самый надежный способ, обходит любые скобки)
+          src = src.replace('memcmp(hash, expected_hash, sizeof(expected_hash))', 'ksu_mm_cmp(hash)')
+          src = src.replace('memcmp(hash, EXPECTED_HASH, 32)', 'ksu_mm_cmp(hash)')
+          src = src.replace('memcmp(hash, KSU_EXPECTED_HASH, 32)', 'ksu_mm_cmp(hash)')
+          
+          # Резервная регулярка для кастомных форков (учитывает скобки от sizeof)
+          src, n_hash = re.subn(r'memcmp\s*\(\s*hash\s*,\s*[^,]+\s*,\s*(?:sizeof\s*\([^)]+\)|[^)]+)\s*\)', 'ksu_mm_cmp(hash)', src)
 
-          total_hash_patches = n_hash1 + n_hash2 + n_hash3
-
-          if total_hash_patches == 0:
+          if src == original_src:
                print("WARN: could not patch apk_sign.c (no memcmp block found)")
                sys.exit(0)
 
@@ -419,7 +423,7 @@ jobs:
           src = src[:last] + "\n" + hdr + src[last:]
           
           open(apk_sign, "w").write(src)
-          print(f"Done: {apk_sign} (Successfully injected validator into {total_hash_patches} places!)")
+          print(f"Done: {apk_sign} (Successfully injected validator!)")
           PYEOF2
 
       - name: Apply SuSFS Patches
