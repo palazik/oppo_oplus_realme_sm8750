@@ -3,7 +3,7 @@
 [STAR](https://github.com/palazik/oppo_oplus_realme_sm8750/stargazers)
 [FORK](https://github.com/palazik/oppo_oplus_realme_sm8750/forks)
 [COOLAPK](http://www.coolapk.com/u/22650293)
-[DISSCUSSION]([https://github.com/palazik/oppo_oplus_realme_sm8750/discussions](https://github.com/palazik/oppo_oplus_realme_sm8750/discussions))
+[![DISSCUSSION](https://github.com/palazik/oppo_oplus_realme_sm8750/discussions](https://github.com/palazik/oppo_oplus_realme_sm8750/discussions))
 
 \<img alt="Endpoint Badge" src="[https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcctv18%2Fkernel-workshop%2Frefs%2Fheads%2Fhotfix%2Fnotice.json](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcctv18%2Fkernel-workshop%2Frefs%2Fheads%2Fhotfix%2Fnotice.json)"\>
 
