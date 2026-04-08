@@ -308,22 +308,27 @@ jobs:
           pip install -q pyaxmlparser 2>/dev/null || true
           mkdir -p /tmp/manager_apks
 
-          # ── Скачиваем latest APK каждого менеджера (normal + spoofed) ────
+          # ── Download latest APK from managers (normal + spoofed) ────
           download_latest_apk() {
             local REPO="$1" PATTERN="$2" OUT="$3"
             local URL
-            URL=$(curl -sf "https://api.github.com/repos/${REPO}/releases/latest" \
+            # Added GitHub token для обхода лимитов API, если он доступен
+            URL=$(curl -sfL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases/latest" \
               | python3 -c "
           import sys,json,re
-          d=json.load(sys.stdin)
-          pat=re.compile(r'$PATTERN')
-          assets=[a['browser_download_url'] for a in d.get('assets',[]) if pat.search(a['name'])]
-          print(assets[0] if assets else '')
+          try:
+              d=json.load(sys.stdin)
+              pat=re.compile(r'$PATTERN')
+              assets=[a['browser_download_url'] for a in d.get('assets',[]) if pat.search(a['name'])]
+              print(assets[0] if assets else '')
+          except Exception:
+              print('')
             ")
             if [ -n "$URL" ]; then
-              aria2c -q -s4 -x4 "$URL" -o "$OUT" && echo "Downloaded: $OUT" || echo "WARN: failed $OUT"
+              # REPLACE: use wget expect aria2c для корректной работы с редиректами
+              wget -qO "$OUT" "$URL" && echo "Downloaded: $OUT" || echo "WARN: failed $OUT"
             else
-              echo "WARN: no asset matched '$PATTERN' in $REPO"
+              echo "WARN: no asset matched '$PATTERN' in $REPO (or API limit reached)"
             fi
           }
 
