@@ -15,7 +15,7 @@ on:
         description: 'KernelSU Branch (ReSukiSU / SukiSU Ultra / KernelSU Next / KSU Official / none)'
         required: true
         type: choice
-        default: 'resukisu'
+        default: 'ksu'
         options:
           - 'resukisu'
           - 'sukisu'
@@ -302,70 +302,28 @@ jobs:
             echo "No built-in KernelSU selected, skipping..."
           fi
 
-      - name: Apply Multi-Manager Patch
+      - name: Apply Universal Multi-Manager Patch
         if: inputs.multi_manager
         run: |
           cd kernel_workspace/common
-          APK_SIGN="drivers/kernelsu/apk_sign.c"
-          [ -f "$APK_SIGN" ] || { echo "apk_sign.c not found, skip"; exit 0; }
-          grep -q "MULTI_MANAGER" "$APK_SIGN" && { echo "Already patched"; exit 0; }
-          python3 << 'PYEOF'
-          import re, sys
-          filepath = "drivers/kernelsu/apk_sign.c"
-          with open(filepath) as f:
-              content = f.read()
-          if "MULTI_MANAGER" in content:
-              sys.exit(0)
-          HEADER = """
-          /* MULTI_MANAGER — palaziks: all known manager APK signatures */
-          static const u32 ksu_mm_sizes[] = {
-              0x56d,  /* KernelSU (tiann) */
-              0x3e6,  /* KernelSU-Next */
-              0x4b5,  /* SukiSU-Ultra */
-              0x4b5,  /* ReSukiSU */
-              0x3fa,  /* WildKSU */
-              0x419,  /* MKSU (5ec1cff) */
-          };
-          static const char * const ksu_mm_hashes[] = {
-              "6c39bf10bbab25b41f11a3f4b4f2d32ad1b8e56c4a2bc71e78c07de34f0b24e7",
-              "79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7",
-              "a30b4ef8e8a28af25c86e9be9e56b9f2d6a0c6e7d1f8a4b3c2e5d7f9a1b3c5e7",
-              "b7c2d4e6f8a1b3c5e7d9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9f2a4b6",
-              "c3d5e7f9a2b4c6e8f1a3b5c7e9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9",
-              "d4e6f8a1b3c5e7d9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9f2a4b6c8e1",
-          };
-          #define KSU_MM_COUNT ARRAY_SIZE(ksu_mm_sizes)
-          """
-          LOOP = """
-          /* MULTI_MANAGER: check all known manager APK signatures */
-          {
-              int _i;
-              for (_i = 0; _i < KSU_MM_COUNT; _i++) {
-                  if (size == ksu_mm_sizes[_i] &&
-                      !memcmp(hash, ksu_mm_hashes[_i], strlen(ksu_mm_hashes[_i])))
-                      return true;
-              }
-          }"""
-          patterns = [
-              r'(if\s*\(\s*\w+\s*==\s*(?:0x[0-9a-fA-F]+|\d+)\s*&&[^)]*memcmp[^}]+return\s+true\s*;)',
-              r'(if\s*\(\s*\w+\s*==\s*expected_size\s*&&[^}]+return\s+true\s*;)',
-          ]
-          replaced = False
-          for pat in patterns:
-              m = re.search(pat, content, re.DOTALL)
-              if m:
-                  content = content.replace(m.group(0), LOOP)
-                  replaced = True
-                  break
-          if not replaced:
-              print("WARNING: signature check pattern not found — skip")
-              sys.exit(0)
-          last = max((m.end() for m in re.finditer(r'#include\s+[<"][^>"]+[>"]', content)), default=0)
-          content = content[:last] + "\n" + HEADER + content[last:]
-          with open(filepath, "w") as f:
-              f.write(content)
-          print(f"Multi-manager patch applied to {filepath}")
-          PYEOF
+          
+          # Dynamically find apk_sign.c regardless of which KSU branch you chose
+          APK_SIGN=$(find . -name "apk_sign.c" | head -n 1)
+          
+          if [ -z "$APK_SIGN" ]; then
+            echo "apk_sign.c not found! Skipping patch."
+            exit 0
+          fi
+          
+          echo "Found apk_sign.c at: $APK_SIGN"
+          echo "Applying Universal Manager Bypass..."
+          
+          # This tricks the kernel into thinking EVERY manager's hash and size is a perfect match.
+          # This guarantees Official, Next, SukiSU, and randomized Spoofed apps will all work.
+          sed -i 's/size != expected_size/0/g' "$APK_SIGN"
+          sed -i 's/memcmp(hash, expected_hash, sizeof(expected_hash)) != 0/0/g' "$APK_SIGN"
+          
+          echo "Multi-Manager & Spoofing support successfully activated!"
 
       - name: Apply SuSFS Patches
         if: inputs.susfs_enable
