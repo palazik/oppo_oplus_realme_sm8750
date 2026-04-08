@@ -287,9 +287,7 @@ jobs:
             sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
             KSU_GIT_TAG=$(curl -sL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/tags" | grep -o '"name": *"[^"]*"' | head -n 1 | sed 's/"name": "//;s/"//')
             sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" kernel/Kbuild
-            cd ../common/drivers/kernelsu
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/apk_sign.patch || true
-            patch -p2 -N -F 3 < apk_sign.patch || true
+            # СТАРОЕ ГОВНО (apk_sign.patch) УДАЛЕНО ОТСЮДА!
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
             echo "Configuring Official KernelSU..."
             curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
@@ -320,6 +318,7 @@ jobs:
           import sys, json, re
           try:
               data = json.load(sys.stdin)
+              # Берем первый доступный релиз, даже если это pre-release
               rel = data[0] if isinstance(data, list) and len(data) > 0 else data
               p = re.compile(r'${PAT}', re.I)
               u = [a['browser_download_url'] for a in rel.get('assets', []) if p.search(a['name'])]
@@ -337,13 +336,11 @@ jobs:
           dl_apk "KernelSU-Next/KernelSU-Next" '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/ksunext.apk
           dl_apk "KernelSU-Next/KernelSU-Next" 'spoof.*\.apk$'            /tmp/manager_apks/ksunext_spoof.apk
           dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '\.apk$'                    /tmp/manager_apks/sukisu.apk
-          dl_apk "ReSukiSU/ReSukiSU"           '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/resukisu.apk
-          dl_apk "ReSukiSU/ReSukiSU"           'spoof.*\.apk$'            /tmp/manager_apks/resukisu_spoof.apk
+          # Упрощенный поиск для ReSukiSU
+          dl_apk "ReSukiSU/ReSukiSU"           '\.apk$'                    /tmp/manager_apks/resukisu.apk
           dl_apk "WildKernels/Wild_KSU"        '\.apk$'                   /tmp/manager_apks/wildksu.apk
 
-          ls -lh /tmp/manager_apks/
-
-          # ── Compute SHA256 via apksigner ─────────────
+          # ── Compute SHA256 ──────────────────────────
           python3 << 'PYEOF'
           import os, subprocess, re, sys
 
@@ -355,11 +352,9 @@ jobs:
               if not fname.endswith('.apk'): continue
               fpath = os.path.join(APK_DIR, fname)
               if os.path.getsize(fpath) < 1000: continue
-
               try:
-                  out = subprocess.check_output(
-                      ['apksigner', 'verify', '--print-certs', fpath],
-                      stderr=subprocess.STDOUT, text=True)
+                  out = subprocess.check_output(['apksigner', 'verify', '--print-certs', fpath],
+                                             stderr=subprocess.STDOUT, text=True)
                   m = re.search(r'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})', out)
                   if m:
                       h = m.group(1).lower()
@@ -367,73 +362,49 @@ jobs:
                           hashes.add(h)
                           managers.append((fname, h))
                           print(f"  OK {fname}: sha256={h}")
-              except Exception as e:
-                  print(f"  WARN {fname}: apksigner failed")
+              except Exception:
+                  pass
 
           if not managers:
-              print("ERROR: no valid APK signatures found!")
-              sys.exit(1)
+              print("ERROR: no valid APK signatures found!"); sys.exit(1)
 
           checks = []
           for name, h in managers:
-              # Передаем 0xffffffffu чтобы обойти 'if (expected_size == 0)' в начале функции!
               checks.append(f'    /* {name} */')
+              # В KSUN используем ТОЛЬКО check_v2_signature, так как v3 там не объявлена
               checks.append(f'    if (check_v2_signature(path, 0xffffffffu, "{h}")) return true;')
-              checks.append(f'    if (check_v3_signature(path, 0xffffffffu, "{h}")) return true;')
           
           checks_str = '\n'.join(checks)
-
-          # Максимально чистая функция без лишних проверок пакета
-          new_func = f'''bool is_manager_apk(char *path)
-          {{
-              /* multi-manager: palaziks build */
-          {checks_str}
-              return false;
-          }}'''
-
-          with open('/tmp/mm_func.c', 'w') as f:
-              f.write(new_func)
+          new_func = f'bool is_manager_apk(char *path)\n{{\n{checks_str}\n    return false;\n}}'
+          with open('/tmp/mm_func.c', 'w') as f: f.write(new_func)
           PYEOF
 
           # ── Patch apk_sign.c ──────────────────────────
           export APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -1)
-          [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
           echo "==> Patching: $APK_SIGN"
 
           python3 << 'PYEOF2'
           import re, sys, os
-
           apk_sign_path = os.environ.get("APK_SIGN", "")
-          with open(apk_sign_path) as f:
-              src = f.read()
+          with open(apk_sign_path) as f: src = f.read()
 
-          if 'multi-manager: palaziks build' in src:
-              print("Already patched"); sys.exit(0)
-
-          # 1. Снимаем блокировку размера (теперь 0xffffffffu магическим образом "совпадет" с реальным)
+          # 1. Снимаем блокировки размера
           src = re.sub(r'\*size4\s*==\s*expected_size', '1 /* mm size bypass */', src)
           src = re.sub(r'\bsize\s*!=\s*expected_size\b', '0 /* mm size bypass */', src)
 
-          # 2. Снимаем блокировки v3 и количества блоков (иначе современные APK будут отброшены)
+          # 2. Снимаем блокировки v3 (внутри самого ядра, чтобы оно не ругалось на наличие v3 блока)
           src = src.replace('if (v3_signing_exist || v3_1_signing_exist)', 'if (0 /* mm v3 bypass */)')
           src = src.replace('if (v2_signing_blocks != 1)', 'if (0 /* mm blocks bypass */)')
 
-          # 3. Вставляем нашу идеальную функцию
-          with open('/tmp/mm_func.c') as f:
-              new_func = f.read()
-
+          # 3. Полная замена функции is_manager_apk
+          with open('/tmp/mm_func.c') as f: new_func = f.read()
           pat = re.compile(r'bool\s+is_manager_apk\s*\([^)]*\)\s*\{.*?\n\}', re.DOTALL)
           m = pat.search(src)
-          if not m:
-              print(f"ERROR: is_manager_apk() not found in {apk_sign_path}")
-              sys.exit(1)
-
+          if not m: print("ERROR: is_manager_apk not found"); sys.exit(1)
+          
           new_src = src[:m.start()] + new_func + src[m.end():]
-
-          with open(apk_sign_path, 'w') as f:
-              f.write(new_src)
-
-          print(f"Patched {apk_sign_path}: Injected V2/V3 checks with dummy size 0xffffffffu!")
+          with open(apk_sign_path, 'w') as f: f.write(new_src)
+          print("Patched successfully!")
           PYEOF2
 
       - name: Apply SuSFS Patches
