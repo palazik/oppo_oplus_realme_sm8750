@@ -312,20 +312,26 @@ jobs:
           dl_apk() {
             local REPO="$1" PAT="$2" OUT="$3"
             local URL
-            URL=$(curl -sfL \
+            # Use /releases instead of /releases/latest to catch Pre-releases!
+            URL=$(curl -sL \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${REPO}/releases/latest" | \
+              "https://api.github.com/repos/${REPO}/releases" | \
               python3 -c "
-          import sys,json,re
-          d=json.load(sys.stdin)
-          p=re.compile(r'${PAT}',re.I)
-          u=[a['browser_download_url'] for a in d.get('assets',[]) if p.search(a['name'])]
-          print(u[0] if u else '')
+          import sys, json, re
+          try:
+              data = json.load(sys.stdin)
+              # Grab the absolute newest release (index 0) whether it's stable or pre-release
+              rel = data[0] if isinstance(data, list) and len(data) > 0 else data
+              p = re.compile(r'${PAT}', re.I)
+              u = [a['browser_download_url'] for a in rel.get('assets', []) if p.search(a['name'])]
+              print(u[0] if u else '')
+          except Exception:
+              pass
               " 2>/dev/null)
             [ -n "$URL" ] && wget -qO "$OUT" "$URL" \
               && echo "  OK: $OUT" \
-              || echo "  WARN: no match '${PAT}' in ${REPO}"
+              || echo "  WARN: no match '${PAT}' in ${REPO} (or repo has no releases)"
           }
 
           echo "==> Downloading manager APKs..."
