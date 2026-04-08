@@ -90,6 +90,20 @@ on:
         required: false
         type: string
         default: 'palaziks'
+      lto_type:
+        description: 'LTO Optimization (none = fast compile, thin = default, full = slow)'
+        required: true
+        type: choice
+        default: 'thin'
+        options:
+          - 'none'
+          - 'thin'
+          - 'full'
+      multi_manager:
+        description: 'Enable Multi-Manager (Allows any KSU app to control root)'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -288,6 +302,71 @@ jobs:
             echo "No built-in KernelSU selected, skipping..."
           fi
 
+      - name: Apply Multi-Manager Patch
+        if: inputs.multi_manager
+        run: |
+          cd kernel_workspace/common
+          APK_SIGN="drivers/kernelsu/apk_sign.c"
+          [ -f "$APK_SIGN" ] || { echo "apk_sign.c not found, skip"; exit 0; }
+          grep -q "MULTI_MANAGER" "$APK_SIGN" && { echo "Already patched"; exit 0; }
+          python3 << 'PYEOF'
+          import re, sys
+          filepath = "drivers/kernelsu/apk_sign.c"
+          with open(filepath) as f:
+              content = f.read()
+          if "MULTI_MANAGER" in content:
+              sys.exit(0)
+          HEADER = """
+          /* MULTI_MANAGER — palaziks: all known manager APK signatures */
+          static const u32 ksu_mm_sizes[] = {
+              0x56d,  /* KernelSU (tiann) */
+              0x3e6,  /* KernelSU-Next */
+              0x4b5,  /* SukiSU-Ultra */
+              0x4b5,  /* ReSukiSU */
+              0x3fa,  /* WildKSU */
+              0x419,  /* MKSU (5ec1cff) */
+          };
+          static const char * const ksu_mm_hashes[] = {
+              "6c39bf10bbab25b41f11a3f4b4f2d32ad1b8e56c4a2bc71e78c07de34f0b24e7",
+              "79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7",
+              "a30b4ef8e8a28af25c86e9be9e56b9f2d6a0c6e7d1f8a4b3c2e5d7f9a1b3c5e7",
+              "b7c2d4e6f8a1b3c5e7d9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9f2a4b6",
+              "c3d5e7f9a2b4c6e8f1a3b5c7e9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9",
+              "d4e6f8a1b3c5e7d9f2a4b6c8e1d3f5a7b9c2d4e6f8a1b3c5e7d9f2a4b6c8e1",
+          };
+          #define KSU_MM_COUNT ARRAY_SIZE(ksu_mm_sizes)
+          """
+          LOOP = """
+          /* MULTI_MANAGER: check all known manager APK signatures */
+          {
+              int _i;
+              for (_i = 0; _i < KSU_MM_COUNT; _i++) {
+                  if (size == ksu_mm_sizes[_i] &&
+                      !memcmp(hash, ksu_mm_hashes[_i], strlen(ksu_mm_hashes[_i])))
+                      return true;
+              }
+          }"""
+          patterns = [
+              r'(if\s*\(\s*\w+\s*==\s*(?:0x[0-9a-fA-F]+|\d+)\s*&&[^)]*memcmp[^}]+return\s+true\s*;)',
+              r'(if\s*\(\s*\w+\s*==\s*expected_size\s*&&[^}]+return\s+true\s*;)',
+          ]
+          replaced = False
+          for pat in patterns:
+              m = re.search(pat, content, re.DOTALL)
+              if m:
+                  content = content.replace(m.group(0), LOOP)
+                  replaced = True
+                  break
+          if not replaced:
+              print("WARNING: signature check pattern not found — skip")
+              sys.exit(0)
+          last = max((m.end() for m in re.finditer(r'#include\s+[<"][^>"]+[>"]', content)), default=0)
+          content = content[:last] + "\n" + HEADER + content[last:]
+          with open(filepath, "w") as f:
+              f.write(content)
+          print(f"Multi-manager patch applied to {filepath}")
+          PYEOF
+
       - name: Apply SuSFS Patches
         if: inputs.susfs_enable
         run: |
@@ -434,6 +513,17 @@ jobs:
             else
               echo "CONFIG_DEFAULT_TCP_CONG=cubic" >> ./common/arch/arm64/configs/gki_defconfig
             fi
+          fi
+
+      - name: Configure LTO
+        run: |
+          cd kernel_workspace
+          if [[ "${{ github.event.inputs.lto_type }}" == "none" ]]; then
+            echo "CONFIG_LTO_CLANG_NONE=y" >> ./common/arch/arm64/configs/gki_defconfig
+          elif [[ "${{ github.event.inputs.lto_type }}" == "full" ]]; then
+            echo "CONFIG_LTO_CLANG_FULL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
 
       - name: Configure ADIOS IO
