@@ -305,120 +305,267 @@ jobs:
       - name: Apply Multi-Manager (apksigner dynamic hashes)
         if: inputs.multi_manager
         run: |
-          sudo apt-get update -y && sudo apt-get install -y apksigner
+          sudo apt-get install -y --no-install-recommends apksigner wget 2>/dev/null
           mkdir -p /tmp/manager_apks
 
-          # ── Download latest APKs ────
-          download_latest_apk() {
-            local REPO="$1" PATTERN="$2" OUT="$3"
-            local URL=$(curl -sfL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/${REPO}/releases/latest" \
-              | python3 -c "import sys,json,re; d=json.load(sys.stdin); pat=re.compile(r'$PATTERN'); assets=[a['browser_download_url'] for a in d.get('assets',[]) if pat.search(a['name'])]; print(assets[0] if assets else '')" 2>/dev/null)
-            [ -n "$URL" ] && wget -qO "$OUT" "$URL" && echo "Downloaded: $OUT" || echo "WARN: failed $OUT"
+          # ── Download latest APKs (normal + spoofed) ───────────────────────
+          dl_apk() {
+            local REPO="$1" PAT="$2" OUT="$3"
+            local URL
+            URL=$(curl -sfL \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/releases/latest" | \
+              python3 -c "
+          import sys,json,re
+          d=json.load(sys.stdin)
+          p=re.compile(r'${PAT}',re.I)
+          u=[a['browser_download_url'] for a in d.get('assets',[]) if p.search(a['name'])]
+          print(u[0] if u else '')
+              " 2>/dev/null)
+            [ -n "$URL" ] && wget -qO "$OUT" "$URL" \
+              && echo "  OK: $OUT" \
+              || echo "  WARN: no match '${PAT}' in ${REPO}"
           }
 
-          download_latest_apk "tiann/KernelSU"          "\.apk$"          /tmp/manager_apks/ksu.apk
-          download_latest_apk "KernelSU-Next/KernelSU-Next" "(?i)(?!.*spoof).*\.apk$" /tmp/manager_apks/ksunext.apk
-          download_latest_apk "KernelSU-Next/KernelSU-Next" "(?i)spoof.*\.apk$"        /tmp/manager_apks/ksunext_spoof.apk
-          download_latest_apk "SukiSU-Ultra/SukiSU-Ultra"   "\.apk$"          /tmp/manager_apks/sukisu.apk
-          download_latest_apk "WildKernels/Wild_KSU"        "\.apk$"          /tmp/manager_apks/wildksu.apk
+          echo "==> Downloading manager APKs..."
+          # tiann KernelSU
+          dl_apk "tiann/KernelSU"              '\.apk$'                    /tmp/manager_apks/ksu.apk
+          # KernelSU-Next: normal + spoofed
+          dl_apk "KernelSU-Next/KernelSU-Next" '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/ksunext.apk
+          dl_apk "KernelSU-Next/KernelSU-Next" 'spoof.*\.apk$'            /tmp/manager_apks/ksunext_spoof.apk
+          # SukiSU-Ultra: normal + spoofed
+          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/sukisu.apk
+          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   'spoof.*\.apk$'            /tmp/manager_apks/sukisu_spoof.apk
+          # ReSukiSU: normal + spoofed
+          dl_apk "ReSukiSU/ReSukiSU"           '^(?!.*spoof).*\.apk$'     /tmp/manager_apks/resukisu.apk
+          dl_apk "ReSukiSU/ReSukiSU"           'spoof.*\.apk$'            /tmp/manager_apks/resukisu_spoof.apk
+          # WildKSU
+          dl_apk "WildKernels/Wild_KSU"        '\.apk$'                   /tmp/manager_apks/wildksu.apk
 
-          # ── Compute SHA256 using official apksigner ─────────────
+          ls -lh /tmp/manager_apks/
+
+          # ── Compute size + SHA256 via apksigner --print-certs ─────────────
+          # apksigner выдаёт сертификат в PEM, из него нужны:
+          #   size = длина DER-сертификата в байтах
+          #   hash = SHA256(DER) в hex — это именно то что вычисляет check_block()
           python3 << 'PYEOF'
-          import os, subprocess, sys
+          import os, subprocess, hashlib, base64, re, sys, struct
 
-          apk_dir = '/tmp/manager_apks'
-          hashes = set()
+          APK_DIR = '/tmp/manager_apks'
+          OUT_FILE = '/tmp/mm_entries.txt'
 
-          for fname in sorted(os.listdir(apk_dir)):
-              if not fname.endswith('.apk'): continue
-              fpath = os.path.join(apk_dir, fname)
+          entries = []  # list of (name, size_hex, hash_hex)
+
+          for fname in sorted(os.listdir(APK_DIR)):
+              if not fname.endswith('.apk'):
+                  continue
+              fpath = os.path.join(APK_DIR, fname)
+              if os.path.getsize(fpath) < 1000:
+                  print(f"  SKIP {fname}: too small (download failed?)")
+                  continue
+
               try:
-                  out = subprocess.check_output(['apksigner', 'verify', '--print-certs', fpath], text=True)
-                  for line in out.splitlines():
-                      if "Signer #1 certificate SHA-256 digest:" in line:
-                          h = line.split()[-1].strip().lower()
-                          hashes.add(h)
-                          print(f"  {fname}: hash={h}")
-                          break
-              except Exception as e:
-                  print(f"  {fname}: apksigner failed")
+                  out = subprocess.check_output(
+                      ['apksigner', 'verify', '--print-certs', '--verbose', fpath],
+                      stderr=subprocess.STDOUT, text=True)
+              except subprocess.CalledProcessError as e:
+                  out = e.output
 
-          if not hashes:
+              # apksigner выдаёт SHA-256 сертификата напрямую
+              # "Signer #1 certificate SHA-256 digest: abcdef..."
+              m = re.search(r'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})', out)
+              if not m:
+                  print(f"  SKIP {fname}: no SHA-256 in apksigner output")
+                  print(f"    output: {out[:200]}")
+                  continue
+
+              sha256_hex = m.group(1).lower()
+
+              # Нам нужен ещё SIZE сертификата (в байтах).
+              # apksigner не даёт его напрямую — парсим APK вручную.
+              # check_block() читает certificate length как u32 из signing block.
+              cert_size = None
+              try:
+                  with open(fpath, 'rb') as f:
+                      data = f.read()
+
+                  # Ищем APK Signing Block
+                  magic = b'APK Sig Block 42'
+                  magic_pos = data.rfind(magic)
+                  if magic_pos < 0:
+                      raise ValueError("No APK Sig Block 42")
+
+                  # size_of_block (8 bytes before magic)
+                  sob = struct.unpack_from('<Q', data, magic_pos - 8)[0]
+                  block_start = magic_pos - sob + 8 - 8  # pairs start
+                  pos = block_start
+
+                  while pos < magic_pos - 8:
+                      pair_sz = struct.unpack_from('<Q', data, pos)[0]
+                      pair_id = struct.unpack_from('<I', data, pos + 8)[0]
+                      val_start = pos + 12
+                      val_end   = pos + 8 + pair_sz
+                      val = data[val_start:val_end]
+                      pos = val_end
+
+                      # v2=0x7109871a
+                      if pair_id != 0x7109871a:
+                          continue
+
+                      # Парсим v2 signing block согласно check_block() в apk_sign.c:
+                      # [4] signer-sequence length
+                      # [4] signer length
+                      # [4] signed data length
+                      # [4] digests-sequence length + skip
+                      # [4] certificates length
+                      # [4] certificate length  ← это и есть size4 == expected_size
+                      p = 0
+                      seq_len  = struct.unpack_from('<I', val, p)[0]; p += 4
+                      sgn_len  = struct.unpack_from('<I', val, p)[0]; p += 4
+                      sd_len   = struct.unpack_from('<I', val, p)[0]; p += 4
+                      # digests
+                      dig_len  = struct.unpack_from('<I', val, p)[0]; p += 4
+                      p += dig_len  # skip digests
+                      # certificates
+                      certs_len = struct.unpack_from('<I', val, p)[0]; p += 4
+                      cert_len  = struct.unpack_from('<I', val, p)[0]; p += 4
+                      cert_data = val[p:p + cert_len]
+
+                      # Верифицируем: SHA256(cert_data) должен совпасть с apksigner
+                      computed = hashlib.sha256(cert_data).hexdigest()
+                      if computed != sha256_hex:
+                          print(f"  WARN {fname}: cert hash mismatch: {computed} != {sha256_hex}")
+                          # Всё равно используем размер, хэш берём от apksigner
+                      cert_size = cert_len
+                      break
+
+              except Exception as e:
+                  print(f"  WARN {fname}: manual parse error: {e}")
+
+              if cert_size is None:
+                  print(f"  SKIP {fname}: could not determine cert size")
+                  continue
+
+              print(f"  OK {fname}: size=0x{cert_size:x}  sha256={sha256_hex}")
+              entries.append((fname, cert_size, sha256_hex))
+
+          if not entries:
               print("ERROR: no valid APK signatures found!")
               sys.exit(1)
 
-          # Convert hashes to a C string array for strcmp
-          string_arr = []
-          for h in hashes:
-              string_arr.append(f'    "{h}"')
-          
-          matrix = ",\n".join(string_arr)
-          hash_count = len(hashes)
-          
-          c_block = f"""
-          /* AUTO-GENERATED multi-manager hashes via apksigner */
-          #include <linux/string.h>
+          # Дедупликация по хэшу
+          seen = set()
+          uniq = []
+          for name, size, h in entries:
+              if h not in seen:
+                  seen.add(h)
+                  uniq.append((name, size, h))
 
-          static const char* const ksu_mm_hashes[] = {{
-          {matrix}
-          }};
-          #define KSU_MM_COUNT {hash_count}
+          print(f"\nTotal unique managers: {len(uniq)}")
 
-          /* Ultimate validator using strcmp to match KernelSU v1.0.2+ logic */
-          static inline bool ksu_is_mm_valid(const char *hash_str) {{
-              int i;
-              for (i = 0; i < KSU_MM_COUNT; i++) {{
-                  if (strcmp(ksu_mm_hashes[i], hash_str) == 0)
-                      return true;
-              }}
-              return false;
-          }}
-          """
-          with open('/tmp/mm_header.c', 'w') as f:
-              f.write(c_block)
-          print(f"\nGenerated C block with {hash_count} hashes and inline string validator function.")
+          # Пишем в файл для следующего шага
+          with open(OUT_FILE, 'w') as f:
+              for name, size, h in uniq:
+                  f.write(f"{size} {h} {name}\n")
+
+          print("Written to", OUT_FILE)
           PYEOF
 
-          # ── Patch apk_sign.c (Smart string replacement) ───
-          export APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -n 1)
+          # Проверяем что файл не пустой
+          [ -s /tmp/mm_entries.txt ] || { echo "ERROR: mm_entries.txt empty"; exit 1; }
+          echo "==> Manager entries:"
+          cat /tmp/mm_entries.txt
+
+          # ── Patch is_manager_apk() в apk_sign.c ──────────────────────────
+          # Вместо замены одного check_v2_signature() вызова — полностью
+          # заменяем тело is_manager_apk() на цикл по всем менеджерам.
+          APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -1)
           [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
-          echo "Patching: $APK_SIGN"
+          echo "==> Patching: $APK_SIGN"
 
           python3 << 'PYEOF2'
-          import re, sys, os
+          import re, sys
 
-          apk_sign = os.environ.get("APK_SIGN", "")
-          if not apk_sign:
-              print("Error: APK_SIGN env var missing")
-              sys.exit(1)
-              
-          src = open(apk_sign).read()
-          hdr = open("/tmp/mm_header.c").read()
+          entries_file = '/tmp/mm_entries.txt'
+          apk_sign_path = None
+          import subprocess, os
+          # find apk_sign.c
+          r = subprocess.run(['find','kernel_workspace','-name','apk_sign.c'],
+                             capture_output=True, text=True)
+          apk_sign_path = r.stdout.strip().split('\n')[0]
+          if not apk_sign_path:
+              print("apk_sign.c not found"); sys.exit(0)
 
-          if "ksu_mm_hashes" in src:
+          with open(apk_sign_path) as f:
+              src = f.read()
+
+          if 'ksu_mm_check' in src:
               print("Already patched"); sys.exit(0)
 
-          original_src = src
+          # Читаем entries
+          managers = []
+          with open(entries_file) as f:
+              for line in f:
+                  parts = line.strip().split()
+                  if len(parts) >= 2:
+                      size_int = int(parts[0])
+                      hash_str = parts[1]
+                      name     = parts[2] if len(parts) > 2 else "unknown"
+                      managers.append((name, size_int, hash_str))
 
-          # 1. Kill the strict size check
-          src = re.sub(r'\*size4\s*==\s*expected_size', '1 /* mm size bypass */', src)
+          if not managers:
+              print("No managers in entries file"); sys.exit(1)
 
-          # 2. Replace the strcmp hash check with our multi-manager loop
-          src = re.sub(r'strcmp\s*\(\s*expected_sha256\s*,\s*hash_str\s*\)\s*==\s*0', 'ksu_is_mm_valid(hash_str)', src)
+          # Генерируем новое тело is_manager_apk()
+          # Структура: для каждого менеджера вызываем check_v2_signature()
+          # с его конкретными size и hash. Если хоть один вернул true — return true.
+          checks = []
+          for name, size, h in managers:
+              checks.append(
+                  f'    /* {name} */\n'
+                  f'    if (check_v2_signature(path, 0x{size:x}u, "{h}")) return true;'
+              )
+          checks_str = '\n'.join(checks)
 
-          # 3. Prevent the v3 signature checks from failing our custom managers
-          src = src.replace('if (v3_signing_exist || v3_1_signing_exist)', 'if (0 /* mm v3 bypass */)')
-          src = src.replace('if (v2_signing_blocks != 1)', 'if (0 /* mm blocks bypass */)')
+          new_func = f'''bool is_manager_apk(char *path)
+          {{
+          #ifdef KSU_MANAGER_PACKAGE
+              char pkg[KSU_MAX_PACKAGE_NAME];
+              if (get_pkg_from_apk_path(pkg, path) < 0) {{
+                  pr_err("Failed to get package name from apk path: %s\\n", path);
+                  return false;
+              }}
+              if (strncmp(pkg, KSU_MANAGER_PACKAGE, sizeof(KSU_MANAGER_PACKAGE))) {{
+                  return false;
+              }}
+          #endif
+              /* multi-manager: palaziks build */
+          {checks_str}
+              return false;
+          }}'''
 
-          if src == original_src:
-               print("WARN: could not patch apk_sign.c (strcmp not found)")
-               sys.exit(1)
+          # Заменяем существующую is_manager_apk() функцию целиком
+          # Паттерн матчит всё от "bool is_manager_apk" до закрывающей скобки
+          pat = re.compile(
+              r'bool\s+is_manager_apk\s*\([^)]*\)\s*\{.*?\n\}',
+              re.DOTALL
+          )
+          m = pat.search(src)
+          if not m:
+              print(f"ERROR: is_manager_apk() not found in {apk_sign_path}")
+              print("First 3000 chars of file:")
+              print(src[:3000])
+              sys.exit(1)
 
-          # THE FIX: Inject our C code at the VERY TOP of the file (Line 1) 
-          src = hdr + "\n" + src
-          
-          open(apk_sign, "w").write(src)
-          print(f"Done: {apk_sign} (Successfully injected Multi-Manager string validator at the top of the file!)")
+          new_src = src[:m.start()] + new_func + src[m.end():]
+
+          with open(apk_sign_path, 'w') as f:
+              f.write(new_src)
+
+          print(f"Patched {apk_sign_path}: {len(managers)} managers injected")
+          for name, size, h in managers:
+              print(f"  {name}: 0x{size:x} {h}")
           PYEOF2
 
       - name: Apply SuSFS Patches
