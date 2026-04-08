@@ -343,7 +343,7 @@ jobs:
 
           ls -lh /tmp/manager_apks/
 
-          # ── Compute SHA256 via apksigner (No binary parsing needed!) ─────────────
+          # ── Compute SHA256 via apksigner ─────────────
           python3 << 'PYEOF'
           import os, subprocess, re, sys
 
@@ -376,22 +376,16 @@ jobs:
 
           checks = []
           for name, h in managers:
-              # We pass 0 as the size parameter because we are bypassing the size check inside the kernel!
-              checks.append(f'    /* {name} */\n    if (check_v2_signature(path, 0, "{h}")) return true;')
+              # Передаем 0xffffffffu чтобы обойти 'if (expected_size == 0)' в начале функции!
+              checks.append(f'    /* {name} */')
+              checks.append(f'    if (check_v2_signature(path, 0xffffffffu, "{h}")) return true;')
+              checks.append(f'    if (check_v3_signature(path, 0xffffffffu, "{h}")) return true;')
           
           checks_str = '\n'.join(checks)
 
+          # Максимально чистая функция без лишних проверок пакета
           new_func = f'''bool is_manager_apk(char *path)
           {{
-          #ifdef KSU_MANAGER_PACKAGE
-              char pkg[KSU_MAX_PACKAGE_NAME];
-              if (get_pkg_from_apk_path(pkg, path) < 0) {{
-                  pr_err("Failed to get package name from apk path: %s\\n", path);
-                  return false;
-              }}
-              /* БЛОКИРОВКА ИМЕНИ ПАКЕТА ОТКЛЮЧЕНА */
-          #endif
-              
               /* multi-manager: palaziks build */
           {checks_str}
               return false;
@@ -416,16 +410,15 @@ jobs:
           if 'multi-manager: palaziks build' in src:
               print("Already patched"); sys.exit(0)
 
-          # 1. Kill the exact size check! (This makes manual binary parsing irrelevant)
+          # 1. Снимаем блокировку размера (теперь 0xffffffffu магическим образом "совпадет" с реальным)
           src = re.sub(r'\*size4\s*==\s*expected_size', '1 /* mm size bypass */', src)
-          # Fallback for older versions just in case
           src = re.sub(r'\bsize\s*!=\s*expected_size\b', '0 /* mm size bypass */', src)
 
-          # 2. Kill the v3/v3.1 block check
+          # 2. Снимаем блокировки v3 и количества блоков (иначе современные APK будут отброшены)
           src = src.replace('if (v3_signing_exist || v3_1_signing_exist)', 'if (0 /* mm v3 bypass */)')
           src = src.replace('if (v2_signing_blocks != 1)', 'if (0 /* mm blocks bypass */)')
 
-          # 3. Replace the entire is_manager_apk function
+          # 3. Вставляем нашу идеальную функцию
           with open('/tmp/mm_func.c') as f:
               new_func = f.read()
 
@@ -440,7 +433,7 @@ jobs:
           with open(apk_sign_path, 'w') as f:
               f.write(new_src)
 
-          print(f"Patched {apk_sign_path}: Successfully injected Multi-Manager hashes, bypassed sizes & v3 locks!")
+          print(f"Patched {apk_sign_path}: Injected V2/V3 checks with dummy size 0xffffffffu!")
           PYEOF2
 
       - name: Apply SuSFS Patches
