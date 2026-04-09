@@ -1085,7 +1085,7 @@ jobs:
             STATUS_TEXT="FAILED"
           fi
  
-          # Собираем параметры билда
+          # Собираем параметры билда (Твои старые + НОВЫЕ)
           KSU_TYPE="${{ github.event.inputs.ksu_type }}"
           KSUVER="${{ env.KSUVER }}"
           SUFFIX="${{ github.event.inputs.kernel_suffix }}"
@@ -1098,10 +1098,13 @@ jobs:
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
           MM="${{ github.event.inputs.multi_manager }}"
-          BUILD_NUM="${{ github.run_number }}"
-          REPO="${{ github.repository }}"
-          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
-          TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
+          # --- НОВЫЕ ПЕРЕМЕННЫЕ ---
+          HMBIRD="${{ github.event.inputs.hmbird_enable }}"
+          UFIX="${{ github.event.inputs.unicode_fix }}"
+          TCPND="${{ github.event.inputs.tcp_nodelay }}"
+          ZWB="${{ github.event.inputs.zram_writeback }}"
+          SCHED="${{ github.event.inputs.schedutil_opt }}"
+          MMT="${{ github.event.inputs.multi_manager_throne }}"
  
           # Форматируем KSU тип красиво
           case "$KSU_TYPE" in
@@ -1123,6 +1126,12 @@ jobs:
           [ "$LZ4" = "true" ]    && FEATURES="${FEATURES}LZ4 "
           [ "$LZ4KD" = "true" ]  && FEATURES="${FEATURES}LZ4KD "
           [ "$MM" = "true" ]     && FEATURES="${FEATURES}MultiMgr "
+          [ "$HMBIRD" = "true" ] && FEATURES="${FEATURES}HMBIRD "
+          [ "$UFIX" = "true" ]   && FEATURES="${FEATURES}UniFix "
+          [ "$TCPND" = "true" ]  && FEATURES="${FEATURES}TCP_ND "
+          [ "$ZWB" = "true" ]    && FEATURES="${FEATURES}ZRAM_WB "
+          [ "$SCHED" = "true" ]  && FEATURES="${FEATURES}SchedOpt "
+          [ "$MMT" = "true" ]    && FEATURES="${FEATURES}MM_Throne "
           [ -z "$FEATURES" ]     && FEATURES="Stock"
  
           # Публикуем на telegra.ph если билд успешный
@@ -1160,9 +1169,7 @@ jobs:
               {"tag": "hr"},
               {"tag": "h4", "children": ["📥 Installation"]},
               {"tag": "ol", "children": [
-                  {"tag": "li", "children": ["Patch init_boot with your KSU manager"]},
-                  {"tag": "li", "children": ["fastboot flash init_boot patched_init_boot.img"]},
-                  {"tag": "li", "children": ["Or flash AnyKernel3 zip via TWRP/KernelFlasher"]},
+                  {"tag": "li", "children": ["Flash AnyKernel3 zip via TWRP/KernelFlasher"]},
                   {"tag": "li", "children": ["Install metamodule: mountify / meta-overlayfs"]},
               ]},
               {"tag": "hr"},
@@ -1222,7 +1229,13 @@ jobs:
           $([ "$BBG" = "true" ]    && echo "├ ✅ Baseband Guard" || echo "├ ❌ Baseband Guard")
           $([ "$LZ4" = "true" ]    && echo "├ ✅ LZ4 1.10.0" || echo "├ ❌ LZ4")
           $([ "$LZ4KD" = "true" ]  && echo "├ ✅ LZ4KD ZRAM" || echo "├ ❌ LZ4KD")
-          $([ "$MM" = "true" ]     && echo "└ ✅ Multi-Manager" || echo "└ ❌ Multi-Manager")
+          $([ "$MM" = "true" ]     && echo "├ ✅ Multi-Manager" || echo "├ ❌ Multi-Manager")
+          $([ "$HMBIRD" = "true" ] && echo "├ ✅ HMBIRD SCX" || echo "├ ❌ HMBIRD SCX")
+          $([ "$UFIX" = "true" ]   && echo "├ ✅ Unicode Fix" || echo "├ ❌ Unicode Fix")
+          $([ "$TCPND" = "true" ]  && echo "├ ✅ TCP NoDelay" || echo "├ ❌ TCP NoDelay")
+          $([ "$ZWB" = "true" ]    && echo "├ ✅ ZRAM Writeback" || echo "├ ❌ ZRAM Writeback")
+          $([ "$SCHED" = "true" ]  && echo "├ ✅ SchedUtil Opt" || echo "├ ❌ SchedUtil Opt")
+          $([ "$MMT" = "true" ]    && echo "└ ✅ MM Throne Patch" || echo "└ ❌ MM Throne Patch")
            
           🕐 <code>${TIME_NOW}</code>
           🔢 Build <code>#${BUILD_NUM}</code>
@@ -1332,6 +1345,13 @@ jobs:
           - **ADIOS IO Scheduler:** ${{ github.event.inputs.adios_enable }}
           - **Re-Kernel Support:** ${{ github.event.inputs.rekernel_enable }}
           - **Baseband Guard Support:** ${{ github.event.inputs.baseband_guard }}
+          - **HMBIRD SCX Scheduler:** ${{ github.event.inputs.hmbird_enable }}
+          - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
+          - **TCP NODELAY:** ${{ github.event.inputs.tcp_nodelay }}
+          - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
+          - **SchedUtil Optimizations:** ${{ github.event.inputs.schedutil_opt }}
+          - **Multi-Manager Throne Patch:** ${{ github.event.inputs.multi_manager_throne }}
+          
           - ReSukiSU管理器下载：[ReSukiSU_CI](https://github.com/cctv18/ReSukiSU_CI/releases)
           - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
@@ -1343,7 +1363,7 @@ jobs:
           ### 📋 Installation Guide
           1. If you have a custom recovery (like TWRP) installed, you can flash the AnyKernel zip in recovery mode and reboot.
           2. If your phone is already rooted, you can install [HorizonKernelFlasher](https://github.com/libxzr/HorizonKernelFlasher/releases) and flash the AnyKernel zip through the app.
-          3. If you have previously flashed a SukiSU Ultra kernel, you can flash the AnyKernel zip directly in the SukiSU Ultra Manager app.
+          3. If you have previously flashed a SukiSU Ultra kernel, you can flash the AnyKernel zip directly in the KSU Manager app.
           4. If you are flashing a kernel *without* the LZ4KD patch over a kernel that *has* it, please disable your ZRAM module first to avoid errors.
           5. Modern KSU managers require a metamodule to mount modules properly. Recommended metamodules include: [meta overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs), [mountify](https://github.com/backslashxx/mountify), or [meta magicmount](https://github.com/7a72/meta-magic_mount/). If you are upgrading or using KSU for the first time, install one of these first.
           6. KernelPatch Next (KPN) is an independent KPM implementation. Do not use it if your kernel already has built-in KPM enabled.
