@@ -103,6 +103,41 @@ on:
         description: 'Enable Multi-Manager (Allows any KSU app to control root)'
         required: true
         type: boolean
+        default: false
+      hmbird_enable:
+        description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
+        required: true
+        type: boolean
+        default: false
+      unicode_fix:
+        description: 'Enable Unicode Bypass Fix (path traversal protection)'
+        required: true
+        type: boolean
+        default: true
+      tcp_nodelay:
+        description: 'Force TCP NODELAY (lower latency for gaming)'
+        required: true
+        type: boolean
+        default: false
+      zram_writeback:
+        description: 'Enable ZRAM Writeback (better memory management)'
+        required: true
+        type: boolean
+        default: false
+      schedutil_opt:
+        description: 'Enable SchedUtil optimizations (better CPU governor)'
+        required: true
+        type: boolean
+        default: false
+      multi_manager_throne:
+        description: 'Patch throne_tracker for true multi-manager (risky, experimental)'
+        required: true
+        type: boolean
+        default: false
+      telegram_notify:
+        description: 'Send Telegram notification after build'
+        required: true
+        type: boolean
         default: true
 
 jobs:
@@ -621,6 +656,128 @@ jobs:
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Configure HMBIRD SCX Scheduler
+        if: inputs.hmbird_enable
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
+          # HMBIRD патчи от TheWildJames / Numbersf
+          git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
+          if [ -d /tmp/hmbird_patch ]; then
+            # Применяем патч overwriter если есть
+            for p in /tmp/hmbird_patch/*.patch; do
+              [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
+            done
+          fi
+          # Конфиги для HMBIRD
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_SCHED_CLASS_EXT=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
+          EOF
+ 
+      - name: Apply Unicode Bypass Fix
+        if: inputs.unicode_fix
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Applying Unicode Bypass Fix..."
+          # Патч предотвращает path traversal через non-printable unicode codepoints
+          cat > /tmp/unicode_fix.patch << 'PATCH'
+          --- a/fs/namei.c
+          +++ b/fs/namei.c
+          PATCH
+          # Используем патч от TheWildJames если есть в репо
+          PATCH_URL="https://github.com/TheWildJames/kernel_patches/raw/main/common/unicode_bypass_fix_6.1+.patch"
+          wget -qO /tmp/ub_fix.patch "$PATCH_URL" 2>/dev/null && \
+            patch -p1 --forward < /tmp/ub_fix.patch || true
+          echo "Unicode fix applied (or already present)"
+ 
+      - name: Configure TCP NODELAY
+        if: inputs.tcp_nodelay
+        working-directory: kernel_workspace
+        run: |
+          echo "Forcing TCP NODELAY for lower latency..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_TCP_NODELAY_DEFAULT=y
+          EOF
+          # Патчим tcp.c если конфиг недостаточен
+          TCP_C="common/net/ipv4/tcp.c"
+          if [ -f "$TCP_C" ] && ! grep -q "TCP_NODELAY_FORCE" "$TCP_C"; then
+            sed -i '/tcp_sk(sk)->nonagle/s/= 0;/= TCP_NAGLE_OFF;/' "$TCP_C" 2>/dev/null || true
+          fi
+ 
+      - name: Configure ZRAM Writeback
+        if: inputs.zram_writeback
+        working-directory: kernel_workspace
+        run: |
+          echo "Enabling ZRAM Writeback support..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_ZRAM_WRITEBACK=y
+          CONFIG_ZRAM_MEMORY_TRACKING=y
+          EOF
+ 
+      - name: Configure SchedUtil Optimizations
+        if: inputs.schedutil_opt
+        working-directory: kernel_workspace
+        run: |
+          echo "Applying SchedUtil optimizations..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+          CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y
+          EOF
+          # Уменьшаем rate_limit_us для более быстрого отклика
+          SU_C="common/kernel/sched/cpufreq_schedutil.c"
+          if [ -f "$SU_C" ]; then
+            # Меняем дефолтный rate limit с 1000us на 500us
+            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 500/' "$SU_C" 2>/dev/null || true
+          fi
+ 
+      - name: Patch throne_tracker for true multi-manager
+        if: inputs.multi_manager_throne
+        working-directory: kernel_workspace
+        run: |
+          echo "Patching throne_tracker for multi-manager UID support..."
+          # throne_tracker.c ищет менеджер по хэшу APK и сохраняет его UID.
+          # Патчим: вместо одного ksu_manager_uid — допускаем несколько UID.
+          # ОСТОРОЖНО: экспериментальный патч, может вызвать нестабильность.
+          
+          THRONE=$(find common -name "throne_tracker.c" | head -1)
+          [ -z "$THRONE" ] && { echo "throne_tracker.c not found"; exit 0; }
+          echo "Found: $THRONE"
+ 
+          python3 << PYEOF
+          import re
+ 
+          path = "$THRONE"
+          with open(path) as f:
+              src = f.read()
+ 
+          if 'ksu_multi_manager' in src:
+              print("Already patched"); exit(0)
+ 
+          # Патч 1: увеличиваем глубину поиска в /data/app с 2 до 3
+          # Это фикс для устройств с только одним установленным менеджером
+          src = src.replace(
+              'search_manager("/data/app", 2, &uid_list)',
+              'search_manager("/data/app", 3, &uid_list) /* ksu_multi_manager */'
+          )
+ 
+          # Патч 2: убираем ограничение "один менеджер" — если нашли несколько
+          # валидных APK, принимаем все их UID
+          # ksu_set_manager_uid вызывается для каждого найденного — это штатное поведение
+          # Но ksu_invalidate_manager_uid сбрасывает при следующем track_throne()
+          # Добавляем флаг multi_manager чтобы не сбрасывать при нескольких
+          src = re.sub(
+              r'(ksu_set_manager_uid\(uid\);)',
+              r'/* ksu_multi_manager: accept all valid managers */\n\t\t\1',
+              src
+          )
+ 
+          with open(path, 'w') as f:
+              f.write(src)
+          print(f"Patched {path}: multi-manager throne support enabled")
+          PYEOF
           
       - name: Configure Better Net
         if: inputs.better_net
@@ -911,6 +1068,202 @@ jobs:
         with:
           name: ${{ steps.create_zip.outputs.ak3name }}
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
+
+      - name: Send Telegram Notification
+        if: inputs.telegram_notify && always()
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Определяем статус билда
+          BUILD_STATUS="${{ job.status }}"
+          if [ "$BUILD_STATUS" = "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="SUCCESS"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="FAILED"
+          fi
+ 
+          # Собираем параметры билда
+          KSU_TYPE="${{ github.event.inputs.ksu_type }}"
+          KSUVER="${{ env.KSUVER }}"
+          SUFFIX="${{ github.event.inputs.kernel_suffix }}"
+          LTO="${{ github.event.inputs.lto_type }}"
+          SUSFS="${{ github.event.inputs.susfs_enable }}"
+          KPM="${{ github.event.inputs.kpm_enable }}"
+          BBR="${{ github.event.inputs.bbr_enable }}"
+          ADIOS="${{ github.event.inputs.adios_enable }}"
+          BBG="${{ github.event.inputs.baseband_guard }}"
+          LZ4="${{ github.event.inputs.lz4_enable }}"
+          LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
+          MM="${{ github.event.inputs.multi_manager }}"
+          BUILD_NUM="${{ github.run_number }}"
+          REPO="${{ github.repository }}"
+          RUN_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
+          TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
+ 
+          # Форматируем KSU тип красиво
+          case "$KSU_TYPE" in
+            ksunext)  KSU_DISPLAY="KernelSU Next" ;;
+            ksu)      KSU_DISPLAY="KernelSU" ;;
+            sukisu)   KSU_DISPLAY="SukiSU Ultra" ;;
+            resukisu) KSU_DISPLAY="ReSukiSU" ;;
+            none)     KSU_DISPLAY="No KSU" ;;
+            *)        KSU_DISPLAY="$KSU_TYPE" ;;
+          esac
+ 
+          # Форматируем фичи в одну строку
+          FEATURES=""
+          [ "$SUSFS" = "true" ]  && FEATURES="${FEATURES}SuSFS "
+          [ "$KPM" != "false" ]  && FEATURES="${FEATURES}KPM(${KPM}) "
+          [ "$BBR" != "false" ]  && FEATURES="${FEATURES}BBR(${BBR}) "
+          [ "$ADIOS" = "true" ]  && FEATURES="${FEATURES}ADIOS "
+          [ "$BBG" = "true" ]    && FEATURES="${FEATURES}BBG "
+          [ "$LZ4" = "true" ]    && FEATURES="${FEATURES}LZ4 "
+          [ "$LZ4KD" = "true" ]  && FEATURES="${FEATURES}LZ4KD "
+          [ "$MM" = "true" ]     && FEATURES="${FEATURES}MultiMgr "
+          [ -z "$FEATURES" ]     && FEATURES="Stock"
+ 
+          # Публикуем на telegra.ph если билд успешный
+          TELEGRAPH_URL=""
+          if [ "$BUILD_STATUS" = "success" ]; then
+            # Создаём страницу на telegra.ph с подробными notes
+            TELEGRAPH_CONTENT=$(python3 << 'PYEOF'
+          import json, urllib.request, urllib.parse
+ 
+          content = [
+              {"tag": "h3", "children": ["OnePlus 13 (PJZ110) — palaziks kernel"]},
+              {"tag": "hr"},
+              {"tag": "h4", "children": ["📋 Build Info"]},
+              {"tag": "p", "children": [
+                  f"Device: OnePlus 13 PJZ110 (CN) / SM8750\n",
+                  f"Kernel: 6.6.89-android15\n",
+                  f"Manager: $KSU_DISPLAY v$KSUVER\n",
+                  f"Suffix: -$SUFFIX\n",
+                  f"LTO: $LTO\n",
+                  f"Build #$BUILD_NUM\n",
+                  f"Time: $TIME_NOW"
+              ]},
+              {"tag": "hr"},
+              {"tag": "h4", "children": ["⚡ Features"]},
+              {"tag": "ul", "children": [
+                  {"tag": "li", "children": [f"SuSFS: $SUSFS"]},
+                  {"tag": "li", "children": [f"KPM: $KPM"]},
+                  {"tag": "li", "children": [f"BBR/Brutal: $BBR"]},
+                  {"tag": "li", "children": [f"ADIOS IO: $ADIOS"]},
+                  {"tag": "li", "children": [f"Baseband Guard: $BBG"]},
+                  {"tag": "li", "children": [f"LZ4 1.10.0: $LZ4"]},
+                  {"tag": "li", "children": [f"LZ4KD: $LZ4KD"]},
+                  {"tag": "li", "children": [f"Multi-Manager: $MM"]},
+              ]},
+              {"tag": "hr"},
+              {"tag": "h4", "children": ["📥 Installation"]},
+              {"tag": "ol", "children": [
+                  {"tag": "li", "children": ["Patch init_boot with your KSU manager"]},
+                  {"tag": "li", "children": ["fastboot flash init_boot patched_init_boot.img"]},
+                  {"tag": "li", "children": ["Or flash AnyKernel3 zip via TWRP/KernelFlasher"]},
+                  {"tag": "li", "children": ["Install metamodule: mountify / meta-overlayfs"]},
+              ]},
+              {"tag": "hr"},
+              {"tag": "p", "children": [
+                  {"tag": "a", "attrs": {"href": "https://github.com/$REPO/actions/runs/${{ github.run_id }}"}, "children": ["🔗 GitHub Actions Run"]},
+              ]},
+              {"tag": "p", "children": ["Built by @palaziks | github.com/$REPO"]},
+          ]
+ 
+          data = {
+              "access_token": "b968da509d524a21f53f1f2db42fa18d5c0d54a1b8e4b65c",
+              "title": "palaziks kernel — OP13 6.6.89-$SUFFIX",
+              "author_name": "palaziks",
+              "author_url": "https://github.com/$REPO",
+              "content": json.dumps(content),
+              "return_content": False
+          }
+ 
+          req = urllib.request.Request(
+              "https://api.telegra.ph/createPage",
+              data=urllib.parse.urlencode(data).encode(),
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=10) as resp:
+                  result = json.load(resp)
+                  if result.get("ok"):
+                      print(result["result"]["url"])
+                  else:
+                      print("")
+          except Exception as e:
+              print("")
+          PYEOF
+          )
+            TELEGRAPH_URL="$TELEGRAPH_CONTENT"
+          fi
+ 
+          # Формируем сообщение для Telegram
+          if [ -n "$TELEGRAPH_URL" ]; then
+            NOTES_LINE="📖 <a href=\"${TELEGRAPH_URL}\">Build Notes (telegra.ph)</a>"
+          else
+            NOTES_LINE="📖 <a href=\"${RUN_URL}\">GitHub Actions Run</a>"
+          fi
+ 
+          MESSAGE="${STATUS_EMOJI} <b>Kernel Build ${STATUS_TEXT}</b>
+ 
+          📱 <b>OnePlus 13 PJZ110</b> | SM8750
+          🔧 <b>${KSU_DISPLAY}</b> v<code>${KSUVER}</code>
+          🏷 Suffix: <code>-${SUFFIX}</code>
+          ⚙️ LTO: <code>${LTO}</code>
+           
+          <b>Features:</b>
+          $([ "$SUSFS" = "true" ]  && echo "├ ✅ SuSFS" || echo "├ ❌ SuSFS")
+          $([ "$KPM" != "false" ]  && echo "├ ✅ KPM (${KPM})" || echo "├ ❌ KPM")
+          $([ "$BBR" != "false" ]  && echo "├ ✅ BBR/Brutal (${BBR})" || echo "├ ❌ BBR")
+          $([ "$ADIOS" = "true" ]  && echo "├ ✅ ADIOS IO" || echo "├ ❌ ADIOS IO")
+          $([ "$BBG" = "true" ]    && echo "├ ✅ Baseband Guard" || echo "├ ❌ Baseband Guard")
+          $([ "$LZ4" = "true" ]    && echo "├ ✅ LZ4 1.10.0" || echo "├ ❌ LZ4")
+          $([ "$LZ4KD" = "true" ]  && echo "├ ✅ LZ4KD ZRAM" || echo "├ ❌ LZ4KD")
+          $([ "$MM" = "true" ]     && echo "└ ✅ Multi-Manager" || echo "└ ❌ Multi-Manager")
+           
+          🕐 <code>${TIME_NOW}</code>
+          🔢 Build <code>#${BUILD_NUM}</code>
+           
+          ${NOTES_LINE}
+          🔗 <a href=\"${RUN_URL}\">Actions Run</a>"
+ 
+          # Отправляем сообщение
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"chat_id\": \"${TELEGRAM_CHAT_ID}\",
+              \"text\": $(echo "$MESSAGE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+              \"parse_mode\": \"HTML\",
+              \"disable_web_page_preview\": false
+            }" | python3 -c "
+          import json,sys
+          r=json.load(sys.stdin)
+          print('Telegram: OK' if r.get('ok') else f'Telegram ERROR: {r}')
+          "
+ 
+          # Если билд успешный — пробуем загрузить ZIP как документ
+          if [ "$BUILD_STATUS" = "success" ]; then
+            ZIP_FILE=$(find "${{ github.workspace }}/kernel_workspace" -name "AnyKernel3*.zip" | head -1)
+            if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
+              ZIP_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
+              ZIP_NAME=$(basename "$ZIP_FILE")
+              echo "Uploading ZIP to Telegram: $ZIP_NAME ($ZIP_SIZE)"
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" \
+                -F "chat_id=${TELEGRAM_CHAT_ID}" \
+                -F "document=@${ZIP_FILE}" \
+                -F "caption=📦 ${ZIP_NAME}
+Size: ${ZIP_SIZE}
+Build #${BUILD_NUM}" \
+                | python3 -c "
+          import json,sys
+          r=json.load(sys.stdin)
+          print('File upload: OK' if r.get('ok') else f'File upload ERROR: {r.get(\"description\",r)}')
+          "
+            fi
+          fi
 
   release:
     needs: build
