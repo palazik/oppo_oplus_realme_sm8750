@@ -946,6 +946,14 @@ jobs:
           echo "--- Pre-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Pre-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
+
+          # --- ФИКС ДЛЯ ЛИНКЕРА KSU (MISSING SYMBOLS) ---
+          echo "Fixing KernelSU Linker Error..."
+          RULES_C=$(find . -path "*/drivers/kernelsu/selinux/rules.c" | head -n 1)
+          if [ -n "$RULES_C" ]; then
+            sed -i '1i void *ksu_dup_sepolicy(void *pol) { return (void *)0; }\nvoid ksu_destroy_sepolicy(void *pol) { }' "$RULES_C"
+            echo "Injected stub functions into $RULES_C"
+          fi
           
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
