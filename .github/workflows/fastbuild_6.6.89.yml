@@ -338,8 +338,8 @@ jobs:
       - name: Fix ksu_dup/destroy_sepolicy missing symbols
         working-directory: kernel_workspace/common
         run: |
-          echo "Looking for rules.c"
-          # Задаем прямые пути, где может лежать скачанный KernelSU-Next
+          echo "Looking for rules.c..."
+          
           POSSIBLE_PATHS=(
             "../KernelSU-Next/kernel/selinux/rules.c"
             "drivers/kernelsu/selinux/rules.c"
@@ -360,17 +360,13 @@ jobs:
           
           echo "Found rules.c perfectly at: $RULES_C"
 
-          # Если ksu_dup_sepolicy нигде не определена — форсируем
-          # использование stop_machine пути (не требует dup/destroy).
-          # Убираем дефайн SELINUX_POLICY_INSTEAD_SELINUX_SS из rules.c
-          # путём добавления #undef в начало файла.
-          if ! grep -rq "void \*ksu_dup_sepolicy" "$(dirname $RULES_C)" 2>/dev/null; then
-            echo "Forcing stop_machine path (no ksu_dup_sepolicy found)..."
-            # Добавляем undef ПЕРЕД всеми includes чтобы переопределить
-            sed -i '1s/^/#undef SELINUX_POLICY_INSTEAD_SELINUX_SS\n/' "$RULES_C"
-            echo "Patched $RULES_C: forced non-SELINUX_POLICY path"
+          # Брутально УДАЛЯЕМ строчку с дефайном, чтобы он не смог включиться снова
+          if grep -q "SELINUX_POLICY_INSTEAD_SELINUX_SS" "$RULES_C"; then
+            echo "Removing SELINUX_POLICY_INSTEAD_SELINUX_SS define..."
+            sed -i '/#define SELINUX_POLICY_INSTEAD_SELINUX_SS/d' "$RULES_C"
+            echo "Patched $RULES_C: definition completely removed!"
           else
-            echo "ksu_dup_sepolicy found, no patch needed"
+            echo "No need to patch, definition not found."
           fi
 
       - name: Apply Multi-Manager (apksigner dynamic hashes)
