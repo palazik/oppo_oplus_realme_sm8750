@@ -94,7 +94,7 @@ on:
         description: 'LTO Optimization (none = fast compile, thin = default, full = slow)'
         required: true
         type: choice
-        default: 'thin'
+        default: 'full'
         options:
           - 'none'
           - 'thin'
@@ -118,7 +118,7 @@ on:
         description: 'Force TCP NODELAY (lower latency for gaming)'
         required: true
         type: boolean
-        default: false
+        default: true
       zram_writeback:
         description: 'Enable ZRAM Writeback (better memory management)'
         required: true
