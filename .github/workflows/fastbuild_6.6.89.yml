@@ -338,7 +338,7 @@ jobs:
       - name: Fix ksu_dup/destroy_sepolicy missing symbols
         working-directory: kernel_workspace/common
         run: |
-          RULES_C=$(find . -path "*/kernelsu/selinux/rules.c" | head -1)
+          RULES_C=$(find -L . -path "*/kernel/selinux/rules.c" | head -1)
           [ -z "$RULES_C" ] && { echo "rules.c not found, skip"; exit 0; }
 
           # Если ksu_dup_sepolicy нигде не определена — форсируем
