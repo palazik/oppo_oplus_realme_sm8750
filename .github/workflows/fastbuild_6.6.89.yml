@@ -335,6 +335,25 @@ jobs:
             echo "No built-in KernelSU selected, skipping..."
           fi
 
+      - name: Fix ksu_dup/destroy_sepolicy missing symbols
+        working-directory: kernel_workspace/common
+        run: |
+          RULES_C=$(find . -path "*/kernelsu/selinux/rules.c" | head -1)
+          [ -z "$RULES_C" ] && { echo "rules.c not found, skip"; exit 0; }
+
+          # Если ksu_dup_sepolicy нигде не определена — форсируем
+          # использование stop_machine пути (не требует dup/destroy).
+          # Убираем дефайн SELINUX_POLICY_INSTEAD_SELINUX_SS из rules.c
+          # путём добавления #undef в начало файла.
+          if ! grep -rq "void \*ksu_dup_sepolicy" "$(dirname $RULES_C)" 2>/dev/null; then
+            echo "Forcing stop_machine path (no ksu_dup_sepolicy found)..."
+            # Добавляем undef ПЕРЕД всеми includes чтобы переопределить
+            sed -i '1s/^/#undef SELINUX_POLICY_INSTEAD_SELINUX_SS\n/' "$RULES_C"
+            echo "Patched $RULES_C: forced non-SELINUX_POLICY path"
+          else
+            echo "ksu_dup_sepolicy found, no patch needed"
+          fi
+
       - name: Apply Multi-Manager (apksigner dynamic hashes)
         if: inputs.multi_manager
         run: |
@@ -946,14 +965,6 @@ jobs:
           echo "--- Pre-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Pre-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
-
-          # --- ФИКС ДЛЯ ЛИНКЕРА KSU (MISSING SYMBOLS) ---
-          echo "Fixing KernelSU Linker Error..."
-          RULES_C=$(find . -path "*/drivers/kernelsu/selinux/rules.c" | head -n 1)
-          if [ -n "$RULES_C" ]; then
-            sed -i '1i void *ksu_dup_sepolicy(void *pol) { return (void *)0; }\nvoid ksu_destroy_sepolicy(void *pol) { }' "$RULES_C"
-            echo "Injected stub functions into $RULES_C"
-          fi
           
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
