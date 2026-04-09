@@ -1236,7 +1236,7 @@ jobs:
               {"tag": "p", "children": [
                   f"Device: OnePlus 13 PJZ110 (CN) / SM8750\n",
                   f"Kernel: 6.6.89-android15\n",
-                  f"Manager: $KSU_DISPLAY v$KSUVER\n",
+                  f"Manager: $KSU_DISPLAY V$KSUVER\n",
                   f"Suffix: -$SUFFIX\n",
                   f"LTO: $LTO\n",
                   f"Build #$BUILD_NUM\n",
