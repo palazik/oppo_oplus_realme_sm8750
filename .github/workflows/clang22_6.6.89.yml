@@ -1,4 +1,4 @@
-name: 6.6.89 OP13 OKI Fast Build
+name: 6.6.89 OP13 OKI Clang22 Build
 
 env:
   TZ: Asia/Shanghai
