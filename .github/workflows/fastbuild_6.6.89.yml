@@ -338,8 +338,27 @@ jobs:
       - name: Fix ksu_dup/destroy_sepolicy missing symbols
         working-directory: kernel_workspace/common
         run: |
-          RULES_C=$(find -L . -path "*/kernel/selinux/rules.c" | head -1)
-          [ -z "$RULES_C" ] && { echo "rules.c not found, skip"; exit 0; }
+          echo "Looking for rules.c"
+          # Задаем прямые пути, где может лежать скачанный KernelSU-Next
+          POSSIBLE_PATHS=(
+            "../KernelSU-Next/kernel/selinux/rules.c"
+            "drivers/kernelsu/selinux/rules.c"
+          )
+          
+          RULES_C=""
+          for p in "${POSSIBLE_PATHS[@]}"; do
+            if [ -f "$p" ]; then
+              RULES_C="$p"
+              break
+            fi
+          done
+
+          if [ -z "$RULES_C" ]; then
+            echo "CRITICAL: rules.c not found anywhere! Patch skipped."
+            exit 0
+          fi
+          
+          echo "Found rules.c perfectly at: $RULES_C"
 
           # Если ksu_dup_sepolicy нигде не определена — форсируем
           # использование stop_machine пути (не требует dup/destroy).
