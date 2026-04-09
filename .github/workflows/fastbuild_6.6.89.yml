@@ -381,29 +381,31 @@ jobs:
           echo "Found rules.c at: $RULES_C"
 
           if ! grep -q "ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
-            echo "Injecting real ksu_dup_sepolicy implementations..."
+            echo "Injecting real ksu_dup_sepolicy implementations (Dynamic Lookup V3)..."
             
-            # 1. Вставляем прототипы функций в самое начало файла (решает проблему implicit declaration)
+            # 1. Прототипы в начало
             sed -i '1i void *ksu_dup_sepolicy(void *pol);\nvoid ksu_destroy_sepolicy(void *pol);' "$RULES_C"
 
-            # 2. Вставляем реализацию в самый конец
+            # 2. Реализация через динамический поиск в памяти (без WEAK атрибутов!)
             cat >> "$RULES_C" << 'EOF'
 
-          /* --- KSU 6.6 LINKER FIX --- */
+          /* --- KSU 6.6 LINKER FIX V3 (DYNAMIC LOOKUP) --- */
           #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-          /* Используем слабую линковку, чтобы линкер не ругался */
-          extern int policydb_copy(struct policydb *newp, struct policydb *oldp) __attribute__((weak));
-          extern void policydb_destroy(struct policydb *p) __attribute__((weak));
+          extern void *ksu_kallsyms_lookup_name(const char *name);
 
           void *ksu_dup_sepolicy(void *pol) {
               struct selinux_policy *old = pol;
               struct selinux_policy *new_pol;
-              if (!old) return NULL;
+              int (*k_policydb_copy)(struct policydb *, struct policydb *) = NULL;
+              
+              /* Ищем функцию в памяти напрямую */
+              k_policydb_copy = (void *)ksu_kallsyms_lookup_name("policydb_copy");
+              if (!k_policydb_copy || !old) return NULL;
               
               new_pol = kvzalloc(sizeof(*old), GFP_KERNEL);
               if (!new_pol) return NULL;
               
-              if (policydb_copy && policydb_copy(&new_pol->policydb, &old->policydb)) {
+              if (k_policydb_copy(&new_pol->policydb, &old->policydb)) {
                   kvfree(new_pol);
                   return NULL;
               }
@@ -412,13 +414,16 @@ jobs:
 
           void ksu_destroy_sepolicy(void *pol) {
               struct selinux_policy *p = pol;
+              void (*k_policydb_destroy)(struct policydb *) = NULL;
               if (!p) return;
-              if (policydb_destroy) policydb_destroy(&p->policydb);
+              
+              k_policydb_destroy = (void *)ksu_kallsyms_lookup_name("policydb_destroy");
+              if (k_policydb_destroy) k_policydb_destroy(&p->policydb);
               kvfree(p);
           }
           #endif
           EOF
-            echo "Injection complete!"
+            echo "Injection V3 complete!"
           else
             echo "Functions already exist in rules.c, skipping."
           fi
