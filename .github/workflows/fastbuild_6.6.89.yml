@@ -108,7 +108,7 @@ on:
         description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
         required: true
         type: boolean
-        default: true
+        default: false
       unicode_fix:
         description: 'Enable Unicode Bypass Fix (path traversal protection)'
         required: true
