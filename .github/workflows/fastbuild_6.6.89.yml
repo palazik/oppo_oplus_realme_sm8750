@@ -356,15 +356,18 @@ jobs:
           
           echo "Found rules.c at: $RULES_C"
 
-          # Проверяем, не вшивали ли мы уже этот код
           if ! grep -q "ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
             echo "Injecting real ksu_dup_sepolicy implementations..."
             
+            # 1. Вставляем прототипы функций в самое начало файла (решает проблему implicit declaration)
+            sed -i '1i void *ksu_dup_sepolicy(void *pol);\nvoid ksu_destroy_sepolicy(void *pol);' "$RULES_C"
+
+            # 2. Вставляем реализацию в самый конец
             cat >> "$RULES_C" << 'EOF'
 
           /* --- KSU 6.6 LINKER FIX --- */
           #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-          /* Используем слабую линковку, чтобы линкер не ругался, если функции не экспортированы */
+          /* Используем слабую линковку, чтобы линкер не ругался */
           extern int policydb_copy(struct policydb *newp, struct policydb *oldp) __attribute__((weak));
           extern void policydb_destroy(struct policydb *p) __attribute__((weak));
 
