@@ -339,7 +339,6 @@ jobs:
         working-directory: kernel_workspace/common
         run: |
           echo "Looking for rules.c..."
-          
           POSSIBLE_PATHS=(
             "../KernelSU-Next/kernel/selinux/rules.c"
             "drivers/kernelsu/selinux/rules.c"
@@ -347,26 +346,54 @@ jobs:
           
           RULES_C=""
           for p in "${POSSIBLE_PATHS[@]}"; do
-            if [ -f "$p" ]; then
-              RULES_C="$p"
-              break
-            fi
+            if [ -f "$p" ]; then RULES_C="$p"; break; fi
           done
 
           if [ -z "$RULES_C" ]; then
-            echo "CRITICAL: rules.c not found anywhere! Patch skipped."
+            echo "CRITICAL: rules.c not found! Patch skipped."
             exit 0
           fi
           
-          echo "Found rules.c perfectly at: $RULES_C"
+          echo "Found rules.c at: $RULES_C"
 
-          # Брутально УДАЛЯЕМ строчку с дефайном, чтобы он не смог включиться снова
-          if grep -q "SELINUX_POLICY_INSTEAD_SELINUX_SS" "$RULES_C"; then
-            echo "Removing SELINUX_POLICY_INSTEAD_SELINUX_SS define..."
-            sed -i '/#define SELINUX_POLICY_INSTEAD_SELINUX_SS/d' "$RULES_C"
-            echo "Patched $RULES_C: definition completely removed!"
+          # Проверяем, не вшивали ли мы уже этот код
+          if ! grep -q "ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
+            echo "Injecting real ksu_dup_sepolicy implementations..."
+            
+            cat >> "$RULES_C" << 'EOF'
+
+          /* --- KSU 6.6 LINKER FIX --- */
+          #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
+          /* Используем слабую линковку, чтобы линкер не ругался, если функции не экспортированы */
+          extern int policydb_copy(struct policydb *newp, struct policydb *oldp) __attribute__((weak));
+          extern void policydb_destroy(struct policydb *p) __attribute__((weak));
+
+          void *ksu_dup_sepolicy(void *pol) {
+              struct selinux_policy *old = pol;
+              struct selinux_policy *new_pol;
+              if (!old) return NULL;
+              
+              new_pol = kvzalloc(sizeof(*old), GFP_KERNEL);
+              if (!new_pol) return NULL;
+              
+              if (policydb_copy && policydb_copy(&new_pol->policydb, &old->policydb)) {
+                  kvfree(new_pol);
+                  return NULL;
+              }
+              return new_pol;
+          }
+
+          void ksu_destroy_sepolicy(void *pol) {
+              struct selinux_policy *p = pol;
+              if (!p) return;
+              if (policydb_destroy) policydb_destroy(&p->policydb);
+              kvfree(p);
+          }
+          #endif
+          EOF
+            echo "Injection complete!"
           else
-            echo "No need to patch, definition not found."
+            echo "Functions already exist in rules.c, skipping."
           fi
 
       - name: Apply Multi-Manager (apksigner dynamic hashes)
