@@ -951,20 +951,9 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
-
-          # --- ФИКС ДЛЯ KERNELSU И CLANG 18 ---
-          echo "Fixing KernelSU implicit function declarations..."
-          RULES_C=$(find . -path "*/drivers/kernelsu/selinux/rules.c" | head -n 1)
-          if [ -n "$RULES_C" ]; then
-            sed -i '1i void *ksu_dup_sepolicy(void *pol);\nvoid ksu_destroy_sepolicy(void *pol);' "$RULES_C"
-            echo "Patched $RULES_C"
-          fi
-
-          # Обновленные флаги KCFLAGS для компилятора
-          COMPILER_FLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types"
           
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int" gki_defconfig &&
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int" Image
           
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
