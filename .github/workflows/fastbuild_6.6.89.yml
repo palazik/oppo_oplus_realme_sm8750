@@ -1251,12 +1251,14 @@ jobs:
               ZIP_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
               ZIP_NAME=$(basename "$ZIP_FILE")
               echo "Uploading ZIP to Telegram: $ZIP_NAME ($ZIP_SIZE)"
+              
+              # Формируем подпись без разрывов строк, чтобы не бесить YAML
+              CAPTION=$(printf "📦 %s\nSize: %s\nBuild #%s" "$ZIP_NAME" "$ZIP_SIZE" "$BUILD_NUM")
+              
               curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" \
                 -F "chat_id=${TELEGRAM_CHAT_ID}" \
                 -F "document=@${ZIP_FILE}" \
-                -F "caption=📦 ${ZIP_NAME}
-Size: ${ZIP_SIZE}
-Build #${BUILD_NUM}" \
+                -F "caption=${CAPTION}" \
                 | python3 -c "
           import json,sys
           r=json.load(sys.stdin)
