@@ -36,6 +36,14 @@ on:
           - 'false'
           - 'builtin'
           - 'kpn'
+      clang_version:
+        description: 'Choose clang version for building kernel'
+        required: true
+        type: choice
+        default: 'clang22'
+        options:
+          - 'clang22'
+          - 'clang18'
       lz4_enable:
         description: 'Install LZ4 1.10.0 + ZSTD 1.5.7 Patch'
         required: true
@@ -170,17 +178,17 @@ jobs:
           unzip -q common.zip && 
           mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
           rm -rf common.zip &
-          
-          echo "Cloning LLVM-Clang18 toolchain..." &&
-          mkdir -p clang18 &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
-          unzip -q clang.zip -d clang18 &&
-          rm -rf clang.zip &
-          
-          echo "Cloning build tools..." &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
-          unzip -q build-tools.zip &&
-          rm -rf build-tools.zip &
+
+          elif [[ ${{ github.event.inputs.ksu_type }} == "clang18" ]]; then
+            echo "Cloning LLVM-Clang18 toolchain..." &&
+            mkdir -p clang18 &&
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
+            unzip -q clang.zip -d clang18 &&
+            rm -rf clang.zip &
+            echo "Cloning build tools..." &&
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
+            unzip -q build-tools.zip &&
+            rm -rf build-tools.zip &
           
           wait
           echo "Source and tools initialized successfully!"
