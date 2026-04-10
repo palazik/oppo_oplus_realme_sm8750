@@ -179,24 +179,19 @@ jobs:
           mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
           rm -rf common.zip &
 
+          # ИСПРАВЛЕНИЕ: Проверяем clang_version
           if [[ ${{ github.event.inputs.clang_version }} == "clang22" ]]; then
-            echo "Cloning Official LLVM-Clang 22.1.3..."
-            mkdir -p clang18
-            aria2c -s16 -x16 -k1M https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.3/LLVM-22.1.3-Linux-X64.tar.xz -o clang.tar.xz
-            tar -xf clang.tar.xz -C clang18 --strip-components=1
-            rm -rf clang.tar.xz
+            echo "Cloning Official LLVM-Clang 22.1.3..." &&
+            mkdir -p clang18 &&
+            aria2c -s16 -x16 -k1M https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.3/LLVM-22.1.3-Linux-X64.tar.xz -o clang.tar.xz &&
+            tar -xvf clang.tar.xz -C clang18 --strip-components=1 &&
+            rm -rf clang.tar.xz &
             
-            # Твоя проверка на вложенность:
-            if [ ! -f "clang18/bin/clang" ]; then
-              echo "Fixing nested LLVM directory structure..."
-              ln -s $(ls -d clang18/*/bin | head -n 1) clang18/bin || true
-            fi
-            
-            echo "Cloning build tools..."
-            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip
-            unzip -q build-tools.zip
-            rm -rf build-tools.zip
-          fi
+            # ИСПРАВЛЕНИЕ: Качаем нормальные build-tools
+            echo "Cloning build tools..." &&
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
+            unzip -q build-tools.zip &&
+            rm -rf build-tools.zip &
 
           elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
             echo "Cloning LLVM-Clang18 toolchain..." &&
