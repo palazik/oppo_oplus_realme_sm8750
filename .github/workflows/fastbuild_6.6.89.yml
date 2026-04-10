@@ -359,7 +359,7 @@ jobs:
           elif [[ ${{ github.event.inputs.ksu_type }} == "wildksu" ]]; then
             echo "Configuring WildKSU..."
             # Fetch from the WildKernels repository
-            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/main/kernel/setup.sh" | bash -s main
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/dev/kernel/setup.sh" | bash -s dev
             
             # setup.sh usually clones into a folder named Wild_KSU or KernelSU
             if [ -d "Wild_KSU" ]; then cd Wild_KSU; else cd KernelSU; fi
