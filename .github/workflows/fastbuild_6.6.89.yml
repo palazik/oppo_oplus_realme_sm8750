@@ -380,12 +380,10 @@ jobs:
           path = sys.argv[1]
           with open(path) as f:
               src = f.read()
-          # Убираем инжектированные прототипы в начале
           src = re.sub(
               r'void \*ksu_dup_sepolicy\(void \*pol\);\nvoid ksu_destroy_sepolicy\(void \*pol\);\n',
               '', src
           )
-          # Убираем весь блок /* --- KSU 6.6 LINKER FIX ... */
           src = re.sub(
               r'/\* --- KSU 6\.6 LINKER FIX.*?#endif\n',
               '', src, flags=re.DOTALL
@@ -396,12 +394,18 @@ jobs:
           PYEOF
           fi
 
-          # Применяем правильный фикс: удаляем само объявление макроса
-          # Это 100% форсирует stop_machine путь, который не требует ksu_dup/destroy.
-          # Работает одинаково для clang18 и clang22, и макрос не включится снова!
+          # ПРАВИЛЬНЫЙ ФИКС: Удаляем макрос и обновляем имена структур для ядра 6.6
           if grep -q "#define SELINUX_POLICY_INSTEAD_SELINUX_SS" "$RULES_C"; then
+            # 1. Удаляем макрос, чтобы форсировать путь #else (stop_machine)
             sed -i '/#define SELINUX_POLICY_INSTEAD_SELINUX_SS/d' "$RULES_C"
-            echo "Applied: forced stop_machine SELinux path (definition removed)"
+            
+            # 2. Исправляем старую структуру для совместимости с ядром 6.6
+            sed -i 's/struct selinux_ss \*ss = selinux_state.ss;/struct selinux_policy \*ss = selinux_state.policy;/g' "$RULES_C"
+            
+            # 3. Заглушаем rwlock, чтобы он вернул NULL и корректно триггерил stop_machine
+            sed -i 's/return &selinux_state.ss->policy_rwlock;/return NULL;/g' "$RULES_C"
+            
+            echo "Applied: forced stop_machine SELinux path for Linux 6.6"
           else
             echo "Already patched"
           fi
