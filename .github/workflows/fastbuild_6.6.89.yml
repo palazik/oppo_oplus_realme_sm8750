@@ -440,7 +440,7 @@ jobs:
         if: inputs.ksu_type == 'wildksu'
         working-directory: kernel_workspace/common
         run: |
-          SUCOMPAT_C=$(find . -name "sucompat.c" -path "*/kernelsu/*")
+          SUCOMPAT_C=$(find -L . -name "sucompat.c" -path "*/kernel/*")
           if [ -n "$SUCOMPAT_C" ] && [ -f "$SUCOMPAT_C" ]; then
             echo "Found sucompat.c at: $SUCOMPAT_C"
             
