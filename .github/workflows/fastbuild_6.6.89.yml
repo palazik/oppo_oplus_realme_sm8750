@@ -359,73 +359,51 @@ jobs:
             echo "No built-in KernelSU selected, skipping..."
           fi
 
-      - name: Fix ksu_dup/destroy_sepolicy missing symbols
+      - name: Fix ksu selinux linker errors
         working-directory: kernel_workspace/common
         run: |
-          echo "Looking for rules.c..."
-          POSSIBLE_PATHS=(
-            "../KernelSU-Next/kernel/selinux/rules.c"
-            "drivers/kernelsu/selinux/rules.c"
-          )
-          
+          # Ищем rules.c в двух возможных местах
           RULES_C=""
-          for p in "${POSSIBLE_PATHS[@]}"; do
-            if [ -f "$p" ]; then RULES_C="$p"; break; fi
+          for p in \
+            "../KernelSU-Next/kernel/selinux/rules.c" \
+            "drivers/kernelsu/selinux/rules.c"; do
+            [ -f "$p" ] && { RULES_C="$p"; break; }
           done
+          [ -z "$RULES_C" ] && { echo "rules.c not found, skip"; exit 0; }
+          echo "Found: $RULES_C"
 
-          if [ -z "$RULES_C" ]; then
-            echo "CRITICAL: rules.c not found! Patch skipped."
-            exit 0
+          # Если предыдущий (сломанный) патч уже применён — убираем его
+          if grep -q "KSU 6.6 LINKER FIX\|ksu_kallsyms_lookup_name\|ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
+            echo "Removing broken V3 patch..."
+            python3 - "$RULES_C" << 'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              src = f.read()
+          # Убираем инжектированные прототипы в начале
+          src = re.sub(
+              r'void \*ksu_dup_sepolicy\(void \*pol\);\nvoid ksu_destroy_sepolicy\(void \*pol\);\n',
+              '', src
+          )
+          # Убираем весь блок /* --- KSU 6.6 LINKER FIX ... */
+          src = re.sub(
+              r'/\* --- KSU 6\.6 LINKER FIX.*?#endif\n',
+              '', src, flags=re.DOTALL
+          )
+          with open(path, 'w') as f:
+              f.write(src)
+          print("Removed broken patch")
+          PYEOF
           fi
-          
-          echo "Found rules.c at: $RULES_C"
 
-          if ! grep -q "ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
-            echo "Injecting real ksu_dup_sepolicy implementations (Dynamic Lookup V3)..."
-            
-            # 1. Прототипы в начало
-            sed -i '1i void *ksu_dup_sepolicy(void *pol);\nvoid ksu_destroy_sepolicy(void *pol);' "$RULES_C"
-
-            # 2. Реализация через динамический поиск в памяти (без WEAK атрибутов!)
-            cat >> "$RULES_C" << 'EOF'
-
-          /* --- KSU 6.6 LINKER FIX V3 (DYNAMIC LOOKUP) --- */
-          #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
-          extern void *ksu_kallsyms_lookup_name(const char *name);
-
-          void *ksu_dup_sepolicy(void *pol) {
-              struct selinux_policy *old = pol;
-              struct selinux_policy *new_pol;
-              int (*k_policydb_copy)(struct policydb *, struct policydb *) = NULL;
-              
-              /* Ищем функцию в памяти напрямую */
-              k_policydb_copy = (void *)ksu_kallsyms_lookup_name("policydb_copy");
-              if (!k_policydb_copy || !old) return NULL;
-              
-              new_pol = kvzalloc(sizeof(*old), GFP_KERNEL);
-              if (!new_pol) return NULL;
-              
-              if (k_policydb_copy(&new_pol->policydb, &old->policydb)) {
-                  kvfree(new_pol);
-                  return NULL;
-              }
-              return new_pol;
-          }
-
-          void ksu_destroy_sepolicy(void *pol) {
-              struct selinux_policy *p = pol;
-              void (*k_policydb_destroy)(struct policydb *) = NULL;
-              if (!p) return;
-              
-              k_policydb_destroy = (void *)ksu_kallsyms_lookup_name("policydb_destroy");
-              if (k_policydb_destroy) k_policydb_destroy(&p->policydb);
-              kvfree(p);
-          }
-          #endif
-          EOF
-            echo "Injection V3 complete!"
+          # Применяем правильный фикс: удаляем само объявление макроса
+          # Это 100% форсирует stop_machine путь, который не требует ksu_dup/destroy.
+          # Работает одинаково для clang18 и clang22, и макрос не включится снова!
+          if grep -q "#define SELINUX_POLICY_INSTEAD_SELINUX_SS" "$RULES_C"; then
+            sed -i '/#define SELINUX_POLICY_INSTEAD_SELINUX_SS/d' "$RULES_C"
+            echo "Applied: forced stop_machine SELinux path (definition removed)"
           else
-            echo "Functions already exist in rules.c, skipping."
+            echo "Already patched"
           fi
 
       - name: Apply Multi-Manager (apksigner dynamic hashes)
@@ -1044,9 +1022,14 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
+
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out \
+          KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+          gki_defconfig && \
           
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int" gki_defconfig &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int" Image
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" gki_defconfig &&
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" Image
           
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
