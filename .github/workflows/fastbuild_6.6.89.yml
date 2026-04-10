@@ -1032,9 +1032,16 @@ jobs:
           KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
           gki_defconfig && \
           
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" gki_defconfig &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" Image
-          
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+            gki_defconfig
+
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+            Image
+
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
@@ -1155,17 +1162,12 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          # Определяем статус билда
           BUILD_STATUS="${{ job.status }}"
-          if [ "$BUILD_STATUS" = "success" ]; then
-            STATUS_EMOJI="✅"
-            STATUS_TEXT="SUCCESS"
-          else
-            STATUS_EMOJI="❌"
-            STATUS_TEXT="FAILED"
-          fi
- 
-          # Собираем параметры билда (Твои старые + НОВЫЕ)
+          BUILD_NUM="${{ github.run_number }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          REPO="${{ github.repository }}"
+          TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
+
           KSU_TYPE="${{ github.event.inputs.ksu_type }}"
           KSUVER="${{ env.KSUVER }}"
           SUFFIX="${{ github.event.inputs.kernel_suffix }}"
@@ -1178,15 +1180,14 @@ jobs:
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
           MM="${{ github.event.inputs.multi_manager }}"
-          # --- НОВЫЕ ПЕРЕМЕННЫЕ ---
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
           TCPND="${{ github.event.inputs.tcp_nodelay }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
           SCHED="${{ github.event.inputs.schedutil_opt }}"
           MMT="${{ github.event.inputs.multi_manager_throne }}"
- 
-          # Форматируем KSU тип красиво
+          CLANG="${{ github.event.inputs.clang_version }}"
+
           case "$KSU_TYPE" in
             ksunext)  KSU_DISPLAY="KernelSU Next" ;;
             ksu)      KSU_DISPLAY="KernelSU" ;;
@@ -1195,168 +1196,214 @@ jobs:
             none)     KSU_DISPLAY="No KSU" ;;
             *)        KSU_DISPLAY="$KSU_TYPE" ;;
           esac
- 
-          # Форматируем фичи в одну строку
-          FEATURES=""
-          [ "$SUSFS" = "true" ]  && FEATURES="${FEATURES}SuSFS "
-          [ "$KPM" != "false" ]  && FEATURES="${FEATURES}KPM(${KPM}) "
-          [ "$BBR" != "false" ]  && FEATURES="${FEATURES}BBR(${BBR}) "
-          [ "$ADIOS" = "true" ]  && FEATURES="${FEATURES}ADIOS "
-          [ "$BBG" = "true" ]    && FEATURES="${FEATURES}BBG "
-          [ "$LZ4" = "true" ]    && FEATURES="${FEATURES}LZ4 "
-          [ "$LZ4KD" = "true" ]  && FEATURES="${FEATURES}LZ4KD "
-          [ "$MM" = "true" ]     && FEATURES="${FEATURES}MultiMgr "
-          [ "$HMBIRD" = "true" ] && FEATURES="${FEATURES}HMBIRD "
-          [ "$UFIX" = "true" ]   && FEATURES="${FEATURES}UniFix "
-          [ "$TCPND" = "true" ]  && FEATURES="${FEATURES}TCP_ND "
-          [ "$ZWB" = "true" ]    && FEATURES="${FEATURES}ZRAM_WB "
-          [ "$SCHED" = "true" ]  && FEATURES="${FEATURES}SchedOpt "
-          [ "$MMT" = "true" ]    && FEATURES="${FEATURES}MM_Throne "
-          [ -z "$FEATURES" ]     && FEATURES="Stock"
- 
-          # Публикуем на telegra.ph если билд успешный
+
+          if [ "$BUILD_STATUS" = "success" ]; then
+            STATUS_EMOJI="✅"; STATUS_TEXT="SUCCESS"
+          else
+            STATUS_EMOJI="❌"; STATUS_TEXT="FAILED"
+          fi
+
+          # ── Telegra.ph ────────────────────────────────────────────────────
+          # Все переменные передаём через env чтобы Python их видел
           TELEGRAPH_URL=""
           if [ "$BUILD_STATUS" = "success" ]; then
-            # Создаём страницу на telegra.ph с подробными notes
-            TELEGRAPH_CONTENT=$(python3 << 'PYEOF'
-          import json, urllib.request, urllib.parse
- 
+            export TG_KSU_DISPLAY="$KSU_DISPLAY"
+            export TG_KSUVER="$KSUVER"
+            export TG_SUFFIX="$SUFFIX"
+            export TG_LTO="$LTO"
+            export TG_BUILD_NUM="$BUILD_NUM"
+            export TG_TIME_NOW="$TIME_NOW"
+            export TG_RUN_URL="$RUN_URL"
+            export TG_REPO="$REPO"
+            export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
+            export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
+            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
+            export TG_UFIX="$UFIX" TG_TCPND="$TCPND" TG_ZWB="$ZWB"
+            export TG_SCHED="$SCHED" TG_MMT="$MMT" TG_CLANG="$CLANG"
+
+            TELEGRAPH_URL=$(python3 << 'PYEOF'
+          import json, urllib.request, urllib.parse, os
+
+          e = os.environ.get
+
+          def feat(val, name):
+              icon = "✅" if val == "true" else "❌"
+              return {"tag": "li", "children": [f"{icon} {name}"]}
+
           content = [
-              {"tag": "h3", "children": ["OnePlus 13 (PJZ110) — palaziks kernel"]},
+              {"tag": "h3", "children": [f"OnePlus 13 (PJZ110) — palaziks kernel"]},
               {"tag": "hr"},
               {"tag": "h4", "children": ["📋 Build Info"]},
-              {"tag": "p", "children": [
-                  f"Device: OnePlus 13 PJZ110 (CN) / SM8750\n",
-                  f"Kernel: 6.6.89-android15\n",
-                  f"Manager: $KSU_DISPLAY V$KSUVER\n",
-                  f"Suffix: -$SUFFIX\n",
-                  f"LTO: $LTO\n",
-                  f"Build #$BUILD_NUM\n",
-                  f"Time: $TIME_NOW"
+              {"tag": "table", "children": [
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Device"]},
+                      {"tag": "td", "children": ["OnePlus 13 PJZ110 (CN) / SM8750"]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Kernel"]},
+                      {"tag": "td", "children": ["6.6.89-android15"]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Manager"]},
+                      {"tag": "td", "children": [f"{e('TG_KSU_DISPLAY')} v{e('TG_KSUVER')}"]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Suffix"]},
+                      {"tag": "td", "children": [f"-{e('TG_SUFFIX')}"]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["LTO"]},
+                      {"tag": "td", "children": [e("TG_LTO")]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Clang"]},
+                      {"tag": "td", "children": [e("TG_CLANG")]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Build #"]},
+                      {"tag": "td", "children": [e("TG_BUILD_NUM")]}
+                  ]},
+                  {"tag": "tr", "children": [
+                      {"tag": "td", "children": ["Time"]},
+                      {"tag": "td", "children": [e("TG_TIME_NOW")]}
+                  ]},
               ]},
               {"tag": "hr"},
               {"tag": "h4", "children": ["⚡ Features"]},
               {"tag": "ul", "children": [
-                  {"tag": "li", "children": [f"SuSFS: $SUSFS"]},
-                  {"tag": "li", "children": [f"KPM: $KPM"]},
-                  {"tag": "li", "children": [f"BBR/Brutal: $BBR"]},
-                  {"tag": "li", "children": [f"ADIOS IO: $ADIOS"]},
-                  {"tag": "li", "children": [f"Baseband Guard: $BBG"]},
-                  {"tag": "li", "children": [f"LZ4 1.10.0: $LZ4"]},
-                  {"tag": "li", "children": [f"LZ4KD: $LZ4KD"]},
-                  {"tag": "li", "children": [f"Multi-Manager: $MM"]},
+                  feat(e("TG_SUSFS"),  "SuSFS"),
+                  feat(e("TG_KPM") != "false" and "true" or "false", f"KPM ({e('TG_KPM')})"),
+                  feat(e("TG_BBR") != "false" and "true" or "false",  f"BBR/Brutal ({e('TG_BBR')})"),
+                  feat(e("TG_ADIOS"),  "ADIOS IO Scheduler"),
+                  feat(e("TG_BBG"),    "Baseband Guard"),
+                  feat(e("TG_LZ4"),    "LZ4 1.10.0 + ZSTD 1.5.7"),
+                  feat(e("TG_LZ4KD"), "LZ4KD ZRAM"),
+                  feat(e("TG_MM"),     "Multi-Manager (apk_sign)"),
+                  feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
+                  feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
+                  feat(e("TG_TCPND"), "TCP NoDelay"),
+                  feat(e("TG_ZWB"),    "ZRAM Writeback"),
+                  feat(e("TG_SCHED"), "SchedUtil Optimizations"),
+                  feat(e("TG_MMT"),    "Throne Multi-Manager Patch"),
               ]},
               {"tag": "hr"},
               {"tag": "h4", "children": ["📥 Installation"]},
               {"tag": "ol", "children": [
-                  {"tag": "li", "children": ["Flash AnyKernel3 zip via TWRP/KernelFlasher"]},
-                  {"tag": "li", "children": ["Install metamodule: mountify / meta-overlayfs"]},
+                  {"tag": "li", "children": ["Flash AnyKernel3 zip via TWRP or KernelFlasher"]},
+                  {"tag": "li", "children": ["Install metamodule: mountify / meta-overlayfs / meta-magicmount"]},
+                  {"tag": "li", "children": ["For GKI: patch init_boot with your KSU manager, then fastboot flash init_boot"]},
               ]},
               {"tag": "hr"},
               {"tag": "p", "children": [
-                  {"tag": "a", "attrs": {"href": "https://github.com/$REPO/actions/runs/${{ github.run_id }}"}, "children": ["🔗 GitHub Actions Run"]},
+                  {"tag": "a", "attrs": {"href": e("TG_RUN_URL")}, "children": ["🔗 GitHub Actions Run"]},
+                  "  |  ",
+                  {"tag": "a", "attrs": {"href": f"https://github.com/{e('TG_REPO')}"}, "children": [f"📦 {e('TG_REPO')}"]},
               ]},
-              {"tag": "p", "children": ["Built by @palaziks | github.com/$REPO"]},
+              {"tag": "p", "children": [f"Built by @palaziks"]},
           ]
- 
+
           data = {
               "access_token": "b968da509d524a21f53f1f2db42fa18d5c0d54a1b8e4b65c",
-              "title": "palaziks kernel — OP13 6.6.89-$SUFFIX",
+              "title": f"palaziks kernel — OP13 6.6.89-{e('TG_SUFFIX')} #{e('TG_BUILD_NUM')}",
               "author_name": "palaziks",
-              "author_url": "https://github.com/$REPO",
+              "author_url": f"https://github.com/{e('TG_REPO')}",
               "content": json.dumps(content),
-              "return_content": False
+              "return_content": "false"
           }
- 
+
           req = urllib.request.Request(
               "https://api.telegra.ph/createPage",
               data=urllib.parse.urlencode(data).encode(),
               method="POST"
           )
           try:
-              with urllib.request.urlopen(req, timeout=10) as resp:
+              with urllib.request.urlopen(req, timeout=15) as resp:
                   result = json.load(resp)
                   if result.get("ok"):
                       print(result["result"]["url"])
                   else:
+                      import sys
+                      print(f"telegra.ph error: {result}", file=sys.stderr)
                       print("")
-          except Exception as e:
+          except Exception as ex:
+              import sys
+              print(f"telegra.ph exception: {ex}", file=sys.stderr)
               print("")
           PYEOF
           )
-            TELEGRAPH_URL="$TELEGRAPH_CONTENT"
           fi
- 
-          # Формируем сообщение для Telegram
-          if [ -n "$TELEGRAPH_URL" ]; then
-            NOTES_LINE="📖 <a href=\"${TELEGRAPH_URL}\">Build Notes (telegra.ph)</a>"
-          else
-            NOTES_LINE="📖 <a href=\"${RUN_URL}\">GitHub Actions Run</a>"
-          fi
- 
-          MESSAGE="${STATUS_EMOJI} <b>Kernel Build ${STATUS_TEXT}</b>
- 
-          📱 <b>OnePlus 13 PJZ110</b> | SM8750
-          🔧 <b>${KSU_DISPLAY}</b> v<code>${KSUVER}</code>
-          🏷 Suffix: <code>-${SUFFIX}</code>
-          ⚙️ LTO: <code>${LTO}</code>
-           
-          <b>Features:</b>
-          $([ "$SUSFS" = "true" ]  && echo "├ ✅ SuSFS" || echo "├ ❌ SuSFS")
-          $([ "$KPM" != "false" ]  && echo "├ ✅ KPM (${KPM})" || echo "├ ❌ KPM")
-          $([ "$BBR" != "false" ]  && echo "├ ✅ BBR/Brutal (${BBR})" || echo "├ ❌ BBR")
-          $([ "$ADIOS" = "true" ]  && echo "├ ✅ ADIOS IO" || echo "├ ❌ ADIOS IO")
-          $([ "$BBG" = "true" ]    && echo "├ ✅ Baseband Guard" || echo "├ ❌ Baseband Guard")
-          $([ "$LZ4" = "true" ]    && echo "├ ✅ LZ4 1.10.0" || echo "├ ❌ LZ4")
-          $([ "$LZ4KD" = "true" ]  && echo "├ ✅ LZ4KD ZRAM" || echo "├ ❌ LZ4KD")
-          $([ "$MM" = "true" ]     && echo "├ ✅ Multi-Manager" || echo "├ ❌ Multi-Manager")
-          $([ "$HMBIRD" = "true" ] && echo "├ ✅ HMBIRD SCX" || echo "├ ❌ HMBIRD SCX")
-          $([ "$UFIX" = "true" ]   && echo "├ ✅ Unicode Fix" || echo "├ ❌ Unicode Fix")
-          $([ "$TCPND" = "true" ]  && echo "├ ✅ TCP NoDelay" || echo "├ ❌ TCP NoDelay")
-          $([ "$ZWB" = "true" ]    && echo "├ ✅ ZRAM Writeback" || echo "├ ❌ ZRAM Writeback")
-          $([ "$SCHED" = "true" ]  && echo "├ ✅ SchedUtil Opt" || echo "├ ❌ SchedUtil Opt")
-          $([ "$MMT" = "true" ]    && echo "└ ✅ MM Throne Patch" || echo "└ ❌ MM Throne Patch")
-           
+
+          # ── Telegram message ──────────────────────────────────────────────
+          [ -n "$TELEGRAPH_URL" ] \
+            && NOTES_LINE="📖 <a href=\"${TELEGRAPH_URL}\">Build Notes</a>" \
+            || NOTES_LINE="📖 <a href=\"${RUN_URL}\">Actions Run</a>"
+
+          _f() { [ "$1" = "true" ] && echo "✅" || echo "❌"; }
+          _fb() { [ "$1" != "false" ] && echo "✅" || echo "❌"; }
+
+          MESSAGE="${STATUS_EMOJI} <b>Kernel Build ${STATUS_TEXT}</b> #${BUILD_NUM}
+
+          📱 <b>OnePlus 13 PJZ110</b> · SM8750
+          🔧 <b>${KSU_DISPLAY}</b> <code>v${KSUVER}</code>
+          🏷 <code>6.6.89-${SUFFIX}</code> · LTO: <code>${LTO}</code> · <code>${CLANG}</code>
+
+          <b>Root &amp; Security:</b>
+          $(_f $SUSFS) SuSFS  $(_fb $KPM) KPM(${KPM})  $(_f $BBG) BBG  $(_f $MM) MultiMgr  $(_f $MMT) Throne
+
+          <b>Network &amp; IO:</b>
+          $(_fb $BBR) BBR/Brutal(${BBR})  $(_f $ADIOS) ADIOS  $(_f $TCPND) TCP_ND
+
+          <b>Memory &amp; FS:</b>
+          $(_f $LZ4) LZ4·1.10  $(_f $LZ4KD) LZ4KD  $(_f $ZWB) ZRAM_WB
+
+          <b>Performance:</b>
+          $(_f $SCHED) SchedUtil  $(_f $HMBIRD) HMBIRD  $(_f $UFIX) UniFix
+
           🕐 <code>${TIME_NOW}</code>
-          🔢 Build <code>#${BUILD_NUM}</code>
-           
-          ${NOTES_LINE}
-          🔗 <a href=\"${RUN_URL}\">Actions Run</a>"
- 
-          # Отправляем сообщение
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"chat_id\": \"${TELEGRAM_CHAT_ID}\",
-              \"text\": $(echo "$MESSAGE" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
-              \"parse_mode\": \"HTML\",
-              \"disable_web_page_preview\": false
-            }" | python3 -c "
-          import json,sys
-          r=json.load(sys.stdin)
-          print('Telegram: OK' if r.get('ok') else f'Telegram ERROR: {r}')
-          "
- 
-          # Если билд успешный — пробуем загрузить ZIP как документ
+          ${NOTES_LINE}  🔗 <a href="${RUN_URL}">Run</a>"
+
+          python3 - "$TELEGRAM_TOKEN" "$TELEGRAM_CHAT_ID" "$MESSAGE" << 'PYEOF'
+          import sys, json, urllib.request, urllib.parse
+          token, chat_id, message = sys.argv[1], sys.argv[2], sys.argv[3]
+          data = json.dumps({
+              "chat_id": chat_id,
+              "text": message,
+              "parse_mode": "HTML",
+              "disable_web_page_preview": False,
+              "link_preview_options": {"is_disabled": False}
+          }).encode()
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{token}/sendMessage",
+              data=data,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  result = json.load(r)
+                  print("Telegram:", "OK" if result.get("ok") else f"ERROR: {result.get('description')}")
+          except Exception as e:
+              print(f"Telegram exception: {e}")
+          PYEOF
+
+          # ── Upload ZIP ────────────────────────────────────────────────────
           if [ "$BUILD_STATUS" = "success" ]; then
             ZIP_FILE=$(find "${{ github.workspace }}/kernel_workspace" -name "AnyKernel3*.zip" | head -1)
             if [ -n "$ZIP_FILE" ] && [ -f "$ZIP_FILE" ]; then
               ZIP_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
               ZIP_NAME=$(basename "$ZIP_FILE")
-              echo "Uploading ZIP to Telegram: $ZIP_NAME ($ZIP_SIZE)"
-              
-              # Формируем подпись без разрывов строк, чтобы не бесить YAML
-              CAPTION=$(printf "📦 %s\nSize: %s\nBuild #%s" "$ZIP_NAME" "$ZIP_SIZE" "$BUILD_NUM")
-              
-              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" \
+              echo "Uploading: $ZIP_NAME ($ZIP_SIZE)"
+              CAPTION=$(printf "📦 %s\n📏 %s\n🔢 Build #%s\n⚙️ %s · LTO:%s" \
+                "$ZIP_NAME" "$ZIP_SIZE" "$BUILD_NUM" "$KSU_DISPLAY v$KSUVER" "$LTO")
+              curl -sf -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument" \
                 -F "chat_id=${TELEGRAM_CHAT_ID}" \
                 -F "document=@${ZIP_FILE}" \
                 -F "caption=${CAPTION}" \
                 | python3 -c "
           import json,sys
           r=json.load(sys.stdin)
-          print('File upload: OK' if r.get('ok') else f'File upload ERROR: {r.get(\"description\",r)}')
-          "
+          print('ZIP upload: OK' if r.get('ok') else f'ZIP upload ERROR: {r.get(\"description\")}')
+          " || echo "ZIP upload failed (size limit?)"
             fi
           fi
 
