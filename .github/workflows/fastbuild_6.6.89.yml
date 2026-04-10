@@ -440,8 +440,19 @@ jobs:
         if: inputs.ksu_type == 'wildksu'
         working-directory: kernel_workspace/common
         run: |
-          SUCOMPAT_C=$(find -L . -name "sucompat.c" -path "*/kernel/*")
-          if [ -n "$SUCOMPAT_C" ] && [ -f "$SUCOMPAT_C" ]; then
+          # Directly check the known paths where the file could be mapped
+          SUCOMPAT_C=""
+          for p in \
+            "drivers/kernelsu/sucompat.c" \
+            "../Wild_KSU/kernel/sucompat.c" \
+            "../KernelSU/kernel/sucompat.c"; do
+            if [ -f "$p" ]; then
+              SUCOMPAT_C="$p"
+              break
+            fi
+          done
+          
+          if [ -n "$SUCOMPAT_C" ]; then
             echo "Found sucompat.c at: $SUCOMPAT_C"
             
             # Check if it's actually missing headers to avoid duplicate injection
