@@ -191,7 +191,7 @@ jobs:
           echo "Cloning source repository..."
           curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.111_oneplus13_coloros16.0.5.zip -o common.zip && 
           unzip -q common.zip && 
-          mv "OnePlus_Kernel_Backport-6.6.111_oneplus13_coloros.16.0.5" common &&
+          mv "OnePlus_Kernel_Backport-6.6.111_oneplus13_coloros16.0.5" common &&
           rm -rf common.zip &
 
           # ИСПРАВЛЕНИЕ: Проверяем clang_version
