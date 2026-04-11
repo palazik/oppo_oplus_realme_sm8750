@@ -1565,7 +1565,7 @@ jobs:
           $(_f $CPU_OPT) CPU·Oryon  $(_f $F2FS) F2FS  $(_f $WG) WireGuard  $(_f $LRNG) LRNG  $(_f $WLB) WakeLockBlk
 
           🕐 <code>${TIME_NOW}</code>
-          ${NOTES_LINE}  🔗 <a href="${RUN_URL}">Run</a>"
+          ${NOTES_LINE}  🔗 <a href=\"${RUN_URL}\">Run</a>"
 
           python3 - "$TELEGRAM_TOKEN" "$TELEGRAM_CHAT_ID" "$MESSAGE" << 'PYEOF'
           import sys, json, urllib.request, urllib.parse
