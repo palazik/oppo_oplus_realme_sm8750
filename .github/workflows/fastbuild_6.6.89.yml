@@ -1387,6 +1387,7 @@ jobs:
             ksu)      KSU_DISPLAY="KernelSU" ;;
             sukisu)   KSU_DISPLAY="SukiSU Ultra" ;;
             resukisu) KSU_DISPLAY="ReSukiSU" ;;
+            wildksu)  KSU_DISPLAY="WildKSU" ;;
             none)     KSU_DISPLAY="No KSU" ;;
             *)        KSU_DISPLAY="$KSU_TYPE" ;;
           esac
@@ -1414,6 +1415,8 @@ jobs:
             export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
             export TG_UFIX="$UFIX" TG_TCPND="$TCPND" TG_ZWB="$ZWB"
             export TG_SCHED="$SCHED" TG_MMT="$MMT" TG_CLANG="$CLANG"
+            export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
+            export TG_LRNG="$LRNG" TG_WLB="$WLB"
 
             TELEGRAPH_URL=$(python3 << 'PYEOF'
           import json, urllib.request, urllib.parse, os
@@ -1479,6 +1482,11 @@ jobs:
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
                   feat(e("TG_SCHED"), "SchedUtil Optimizations"),
                   feat(e("TG_MMT"),    "Throne Multi-Manager Patch"),
+                  feat(e("TG_CPU_OPT"), "Oryon CPU Optimizations"),
+                  feat(e("TG_F2FS"), "F2FS Optimizations"),
+                  feat(e("TG_WG"), "WireGuard VPN"),
+                  feat(e("TG_LRNG"), "LRNG v59"),
+                  feat(e("TG_WLB"), "Wakelock Blocker"),
               ]},
               {"tag": "hr"},
               {"tag": "h4", "children": ["📥 Installation"]},
@@ -1552,6 +1560,9 @@ jobs:
 
           <b>Performance:</b>
           $(_f $SCHED) SchedUtil  $(_f $HMBIRD) HMBIRD  $(_f $UFIX) UniFix
+
+          <b>Extra:</b>
+          $(_f $CPU_OPT) CPU·Oryon  $(_f $F2FS) F2FS  $(_f $WG) WireGuard  $(_f $LRNG) LRNG  $(_f $WLB) WakeLockBlk
 
           🕐 <code>${TIME_NOW}</code>
           ${NOTES_LINE}  🔗 <a href="${RUN_URL}">Run</a>"
@@ -1640,7 +1651,9 @@ jobs:
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
             KSU_TYPENAME="KernelSU Next"
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            KSU_TYPENAME="KSU"
+            KSU_TYPENAME="KernelSU"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "wildksu" ]]; then
+            KSU_TYPENAME="WildKSU"
           else
             KSU_TYPENAME="None"
           fi
@@ -1672,11 +1685,17 @@ jobs:
           - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
           - **SchedUtil Optimizations:** ${{ github.event.inputs.schedutil_opt }}
           - **Multi-Manager Throne Patch:** ${{ github.event.inputs.multi_manager_throne }}
+          - **Oryon CPU Optimizations:** ${{ github.event.inputs.cpu_opt }}
+          - **F2FS Optimizations:** ${{ github.event.inputs.f2fs_opt }}
+          - **WireGuard VPN:** ${{ github.event.inputs.wireguard }}
+          - **LRNG v59:** ${{ github.event.inputs.lrng_enable }}
+          - **Wakelock Blocker:** ${{ github.event.inputs.wakelock_blocker }}
           
           - ReSukiSU管理器下载：[ReSukiSU_CI](https://github.com/cctv18/ReSukiSU_CI/releases)
           - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           - KSU原版管理器下载：[KernelSU](https://github.com/tiann/KernelSU/releases)
+          - WildKSU管理器下载: [WildKSU](https://github.com/WildKernels/Wild_KSU/releases)
           
           ### ⏫️ Update Notes:
           - Updated ${{ env.KSU_TYPENAME }} to the latest version (${{ needs.build.outputs.ksuver }})
