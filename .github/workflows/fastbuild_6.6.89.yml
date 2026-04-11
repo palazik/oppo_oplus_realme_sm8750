@@ -816,20 +816,6 @@ jobs:
             patch -p1 --forward < /tmp/ub_fix.patch || true
           echo "Unicode fix applied (or already present)"
  
-      - name: Configure TCP NODELAY
-        if: inputs.tcp_nodelay
-        working-directory: kernel_workspace
-        run: |
-          echo "Forcing TCP NODELAY for lower latency..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_TCP_NODELAY_DEFAULT=y
-          EOF
-          # Патчим tcp.c если конфиг недостаточен
-          TCP_C="common/net/ipv4/tcp.c"
-          if [ -f "$TCP_C" ] && ! grep -q "TCP_NODELAY_FORCE" "$TCP_C"; then
-            sed -i '/tcp_sk(sk)->nonagle/s/= 0;/= TCP_NAGLE_OFF;/' "$TCP_C" 2>/dev/null || true
-          fi
- 
       - name: Configure ZRAM Writeback
         if: inputs.zram_writeback
         working-directory: kernel_workspace
