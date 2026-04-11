@@ -104,10 +104,14 @@ on:
           - 'thin'
           - 'full'
       multi_manager:
-        description: 'Enable Multi-Manager (Allows any KSU app to control root)'
+        description: 'Enable Multi-Manager support (Allows any KSU manager to control root)'
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: 'false'
+        options:
+          - 'false'
+          - 'true'
+          - 'full'
       hmbird_enable:
         description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
         required: true
@@ -128,11 +132,6 @@ on:
         required: true
         type: boolean
         default: true
-      multi_manager_throne:
-        description: 'Patch throne_tracker for true multi-manager (risky, experimental)'
-        required: true
-        type: boolean
-        default: false
       telegram_notify:
         description: 'Send Telegram notification after build'
         required: true
@@ -459,7 +458,7 @@ jobs:
           fi
 
       - name: Apply Multi-Manager (apksigner dynamic hashes)
-        if: inputs.multi_manager
+        if: inputs.multi_manager != 'false'
         run: |
           sudo apt-get install -y --no-install-recommends apksigner 2>/dev/null
           mkdir -p /tmp/manager_apks
@@ -483,7 +482,7 @@ jobs:
           }
 
           echo "==> Downloading APKs..."
-          dl_apk "tiann/KernelSU"              '\.apk$'               /tmp/manager_apks/ksu.apk
+          dl_apk "tiann/KernelSU"             '\.apk$'               /tmp/manager_apks/ksu.apk
           dl_apk "KernelSU-Next/KernelSU-Next" '^(?!.*spoof).*\.apk$' /tmp/manager_apks/ksunext.apk
           dl_apk "KernelSU-Next/KernelSU-Next" 'spoof.*\.apk$'        /tmp/manager_apks/ksunext_spoof.apk
           dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '\.apk' /tmp/manager_apks/sukisu.apk
@@ -502,8 +501,6 @@ jobs:
             with open(path, 'rb') as f:
                 data = bytearray(f.read())
             
-            # Шаг 1: найти EOCD (End of Central Directory)
-            # Ядро ищет его с конца: ищет n такой что data[-i-2:-i] == i как u16
             eocd_offset = None
             for i in range(0, 0x10000):
                 if len(data) < i + 2:
@@ -521,11 +518,7 @@ jobs:
             if eocd_offset is None:
                 return None
             
-            # Шаг 2: читаем offset of start of central directory (12 байт в EOCD)
             cd_offset = struct.unpack_from('<I', data, eocd_offset + 16)[0]
-            
-            # Шаг 3: APK Signing Block находится прямо перед Central Directory
-            # Читаем size_of_block из позиции cd_offset - 24
             if cd_offset < 24:
                 return None
             
@@ -535,10 +528,8 @@ jobs:
                 return None
             
             size_of_block = struct.unpack_from('<Q', data, cd_offset - 24)[0]
-            
-            # Шаг 4: начало пар = cd_offset - size_of_block - 8
             pairs_start = cd_offset - size_of_block - 8
-            pairs_end   = cd_offset - 24  # перед вторым size_of_block
+            pairs_end   = cd_offset - 24
             
             pos = pairs_start
             while pos < pairs_end:
@@ -551,16 +542,9 @@ jobs:
                 val = data[pos + 12 : pos + 8 + pair_sz]
                 pos = pos + 8 + pair_sz
                 
-                if pair_id != 0x7109871a:  # v2 block ID
+                if pair_id != 0x7109871a:
                     continue
                 
-                # Парсим точно как check_block() в apk_sign.c:
-                # kernel_read fp size4 pos  → signer-sequence length
-                # kernel_read fp size4 pos  → signer length
-                # kernel_read fp size4 pos  → signed data length
-                # kernel_read fp size4 pos  → digests-sequence length, затем pos += size4
-                # kernel_read fp size4 pos  → certificates length
-                # kernel_read fp size4 pos  → certificate length  ← expected_size
                 p = 0
                 try:
                     p += 4  # signer-sequence length
@@ -573,7 +557,6 @@ jobs:
                     return cert_len
                 except struct.error:
                     continue
-            
             return None
 
           entries = []
@@ -587,7 +570,6 @@ jobs:
                   print(f"  SKIP {fname}: too small")
                   continue
 
-              # SHA256 от apksigner
               try:
                   out = subprocess.check_output(
                       ['apksigner', 'verify', '--print-certs', fpath],
@@ -601,7 +583,6 @@ jobs:
                   print(f"  SKIP {fname}: apksigner error: {e}")
                   continue
 
-              # Размер сертификата из signing block
               cert_size = get_cert_size_from_apk(fpath)
               if cert_size is None:
                   print(f"  SKIP {fname}: cannot parse cert size")
@@ -618,7 +599,6 @@ jobs:
           if not entries:
               print("ERROR: no entries!"); sys.exit(1)
 
-          # Генерируем новое тело is_manager_apk()
           lines = ['bool is_manager_apk(char *path)', '{']
           for name, size, h in entries:
               lines.append(f'    /* {name} */')
@@ -636,7 +616,6 @@ jobs:
           echo "==> Generated function:"
           cat /tmp/mm_func.c
 
-          # Патчим apk_sign.c
           APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -1)
           [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
           echo "==> Patching: $APK_SIGN"
@@ -651,19 +630,15 @@ jobs:
           with open('/tmp/mm_func.c') as f:
               new_func = f.read()
 
-          # Убираем v3 блокировку — современные APK подписаны v2+v3,
-          # без этого check_v2_signature() всегда вернёт false для них
           src = src.replace(
               'if (v3_signing_exist || v3_1_signing_exist)',
               'if (0 /* mm: skip v3 check */)'
           )
-          # Убираем проверку количества v2 блоков
           src = src.replace(
               'if (v2_signing_blocks != 1)',
               'if (0 /* mm: skip blocks check */)'
           )
 
-          # Заменяем is_manager_apk() целиком
           pat = re.compile(
               r'bool\s+is_manager_apk\s*\(\s*char\s*\*\s*path\s*\)\s*\{.*?\n\}',
               re.DOTALL
@@ -671,7 +646,6 @@ jobs:
           m = pat.search(src)
           if not m:
               print("ERROR: is_manager_apk() not found!")
-              print(src[-3000:])
               sys.exit(1)
 
           src = src[:m.start()] + new_func + src[m.end():]
@@ -680,9 +654,37 @@ jobs:
               f.write(src)
 
           print(f"Done: {path}")
-          print(f"New function preview:")
-          print(new_func[:500])
           PYEOF2
+
+          # -- Экспериментальный блок --
+          if [ "${{ github.event.inputs.multi_manager }}" = "full" ]; then
+            echo "==> Applying experimental throne_tracker patch..."
+            THRONE=$(find kernel_workspace -name "throne_tracker.c" | head -1)
+            [ -z "$THRONE" ] && { echo "throne_tracker.c not found"; exit 0; }
+            
+            python3 << 'PYEOF3'
+          import re, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              src = f.read()
+
+          if 'ksu_multi_manager' in src:
+              print("Already patched"); sys.exit(0)
+
+          src = src.replace(
+              'search_manager("/data/app", 2, &uid_list)',
+              'search_manager("/data/app", 3, &uid_list) /* ksu_multi_manager */'
+          )
+          src = re.sub(
+              r'(ksu_set_manager_uid\(uid\);)',
+              r'/* ksu_multi_manager: accept all valid managers */\n\t\t\1',
+              src
+          )
+          with open(path, 'w') as f:
+              f.write(src)
+          print(f"Patched {path}: multi-manager throne support enabled")
+          PYEOF3
+          fi
 
       - name: Apply SuSFS Patches
         if: inputs.susfs_enable
@@ -967,52 +969,6 @@ jobs:
           };
           WLEOF
           fi
- 
-      - name: Patch throne_tracker for true multi-manager
-        if: inputs.multi_manager_throne
-        working-directory: kernel_workspace
-        run: |
-          echo "Patching throne_tracker for multi-manager UID support..."
-          # throne_tracker.c ищет менеджер по хэшу APK и сохраняет его UID.
-          # Патчим: вместо одного ksu_manager_uid — допускаем несколько UID.
-          # ОСТОРОЖНО: экспериментальный патч, может вызвать нестабильность.
-          
-          THRONE=$(find common -name "throne_tracker.c" | head -1)
-          [ -z "$THRONE" ] && { echo "throne_tracker.c not found"; exit 0; }
-          echo "Found: $THRONE"
- 
-          python3 << PYEOF
-          import re
- 
-          path = "$THRONE"
-          with open(path) as f:
-              src = f.read()
- 
-          if 'ksu_multi_manager' in src:
-              print("Already patched"); exit(0)
- 
-          # Патч 1: увеличиваем глубину поиска в /data/app с 2 до 3
-          # Это фикс для устройств с только одним установленным менеджером
-          src = src.replace(
-              'search_manager("/data/app", 2, &uid_list)',
-              'search_manager("/data/app", 3, &uid_list) /* ksu_multi_manager */'
-          )
- 
-          # Патч 2: убираем ограничение "один менеджер" — если нашли несколько
-          # валидных APK, принимаем все их UID
-          # ksu_set_manager_uid вызывается для каждого найденного — это штатное поведение
-          # Но ksu_invalidate_manager_uid сбрасывает при следующем track_throne()
-          # Добавляем флаг multi_manager чтобы не сбрасывать при нескольких
-          src = re.sub(
-              r'(ksu_set_manager_uid\(uid\);)',
-              r'/* ksu_multi_manager: accept all valid managers */\n\t\t\1',
-              src
-          )
- 
-          with open(path, 'w') as f:
-              f.write(src)
-          print(f"Patched {path}: multi-manager throne support enabled")
-          PYEOF
           
       - name: Configure Better Net
         if: inputs.better_net
@@ -1349,7 +1305,6 @@ jobs:
           UFIX="${{ github.event.inputs.unicode_fix }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
           SCHED="${{ github.event.inputs.schedutil_opt }}"
-          MMT="${{ github.event.inputs.multi_manager_throne }}"
           CLANG="${{ github.event.inputs.clang_version }}"
           CPU_OPT="${{ github.event.inputs.cpu_opt }}"
           F2FS="${{ github.event.inputs.f2fs_opt }}"
@@ -1389,7 +1344,7 @@ jobs:
             export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
             export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
             export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
-            export TG_SCHED="$SCHED" TG_MMT="$MMT" TG_CLANG="$CLANG"
+            export TG_SCHED="$SCHED" TG_CLANG="$CLANG"
             export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
             export TG_LRNG="$LRNG" TG_WLB="$WLB"
 
@@ -1455,7 +1410,6 @@ jobs:
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
                   feat(e("TG_SCHED"), "SchedUtil Optimizations"),
-                  feat(e("TG_MMT"),    "Throne Multi-Manager Patch"),
                   feat(e("TG_CPU_OPT"), "Oryon CPU Optimizations"),
                   feat(e("TG_F2FS"), "F2FS Optimizations"),
                   feat(e("TG_WG"), "WireGuard VPN"),
@@ -1657,7 +1611,6 @@ jobs:
           - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
           - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
           - **SchedUtil Optimizations:** ${{ github.event.inputs.schedutil_opt }}
-          - **Multi-Manager Throne Patch:** ${{ github.event.inputs.multi_manager_throne }}
           - **Oryon CPU Optimizations:** ${{ github.event.inputs.cpu_opt }}
           - **F2FS Optimizations:** ${{ github.event.inputs.f2fs_opt }}
           - **WireGuard VPN:** ${{ github.event.inputs.wireguard }}
