@@ -148,6 +148,41 @@ on:
         required: true
         type: boolean
         default: true
+      cpu_opt:
+        description: 'CPU Optimizations (Oryon MCPU tuning for SM8750)'
+        required: true
+        type: boolean
+        default: true
+      f2fs_opt:
+        description: 'F2FS Optimizations (better flash storage performance)'
+        required: true
+        type: boolean
+        default: false
+      wireguard:
+        description: 'Enable WireGuard VPN support'
+        required: true
+        type: boolean
+        default: false
+      netfilter_full:
+        description: 'Full Netfilter (conntrack, NAT, hashlimit)'
+        required: true
+        type: boolean
+        default: false
+      iosched_kyber:
+        description: 'Enable Kyber IO Scheduler (alternative to ADIOS)'
+        required: true
+        type: boolean
+        default: false
+      lrng_enable:
+        description: 'Enable LRNG v59 (better entropy for crypto/gaming)'
+        required: true
+        type: boolean
+        default: false
+      wakelock_blocker:
+        description: 'Enable Wakelock Blocker (better idle battery drain)'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -359,7 +394,7 @@ jobs:
           elif [[ ${{ github.event.inputs.ksu_type }} == "wildksu" ]]; then
             echo "Configuring WildKSU..."
             # Fetch from the WildKernels repository
-            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/dev/kernel/setup.sh" | bash -s dev
+            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/refs/heads/stable/kernel/setup.sh" | bash -s stable
             
             # setup.sh usually clones into a folder named Wild_KSU or KernelSU
             if [ -d "Wild_KSU" ]; then cd Wild_KSU; else cd KernelSU; fi
@@ -372,14 +407,11 @@ jobs:
             echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
             
             # WildKSU is a fork of KSU-Next, so it uses the same Kbuild variable names
-            if grep -q "KSU_VERSION_FALLBACK" kernel/Kbuild; then
-              sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
-              KSU_GIT_TAG=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v1.0.0")
-              sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" kernel/Kbuild
-            else
-              # Fallback just in case they revert to official KSU upstream logic
-              sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
-            fi
+            sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" \
+              kernel/Kbuild 2>/dev/null || true
+            KSU_GIT_TAG=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v1.0.0")
+            sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" \
+              kernel/Kbuild 2>/dev/null || true
             rm -rf .git
           else
             echo "No built-in KernelSU selected, skipping..."
@@ -434,40 +466,6 @@ jobs:
             echo "Applied: forced stop_machine SELinux path for Linux 6.6"
           else
             echo "Already patched"
-          fi
-
-      - name: Fix WildKSU sucompat.c missing headers
-        if: inputs.ksu_type == 'wildksu'
-        working-directory: kernel_workspace/common
-        run: |
-          # Directly check the known paths where the file could be mapped
-          SUCOMPAT_C=""
-          for p in \
-            "drivers/kernelsu/sucompat.c" \
-            "../Wild_KSU/kernel/sucompat.c" \
-            "../KernelSU/kernel/sucompat.c"; do
-            if [ -f "$p" ]; then
-              SUCOMPAT_C="$p"
-              break
-            fi
-          done
-          
-          if [ -n "$SUCOMPAT_C" ]; then
-            echo "Found sucompat.c at: $SUCOMPAT_C"
-            
-            # Check if it's actually missing headers to avoid duplicate injection
-            if ! grep -q "#include <linux/types.h>" "$SUCOMPAT_C"; then
-              echo "Injecting full header block into sucompat.c..."
-              
-              # Inject all standard Linux and KSU headers required by sucompat.c
-              sed -i '1i#include <linux/types.h>\n#include <linux/stddef.h>\n#include <linux/kernel.h>\n#include <linux/compiler.h>\n#include <linux/uaccess.h>\n#include <linux/cred.h>\n#include <linux/file.h>\n#include <linux/fs.h>\n#include <linux/namei.h>\n#include <linux/sched.h>\n#include <linux/seccomp.h>\n#include <linux/version.h>\n#include "allowlist.h"\n#include "apk_sign.h"\n#include "arch.h"\n#include "core_hook.h"\n#include "ksud.h"\n#include "sucompat.h"\n#include "sulog.h"\n' "$SUCOMPAT_C"
-              
-              echo "Headers injected successfully."
-            else
-              echo "Headers already present."
-            fi
-          else
-            echo "sucompat.c not found, skipping."
           fi
 
       - name: Apply Multi-Manager (apksigner dynamic hashes)
@@ -1016,6 +1014,11 @@ jobs:
           # Clean up Git hashes so no dirty '+' sign gets added
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Set up swap space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
             
       - name: Build Kernel
         run: |
