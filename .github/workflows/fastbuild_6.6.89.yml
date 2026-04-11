@@ -89,11 +89,6 @@ on:
         required: true
         type: boolean
         default: false
-      ccache_debug:
-        description: 'Upload CCache Debug Log'
-        required: true
-        type: boolean
-        default: false
       kernel_suffix:
         description: 'Kernel Suffix (leave empty for default, no spaces/special chars)'
         required: false
@@ -123,11 +118,6 @@ on:
         required: true
         type: boolean
         default: true
-      tcp_nodelay:
-        description: 'Force TCP NODELAY (lower latency for gaming)'
-        required: true
-        type: boolean
-        default: false
       zram_writeback:
         description: 'Enable ZRAM Writeback (better memory management)'
         required: true
@@ -1371,7 +1361,6 @@ jobs:
           MM="${{ github.event.inputs.multi_manager }}"
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
-          TCPND="${{ github.event.inputs.tcp_nodelay }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
           SCHED="${{ github.event.inputs.schedutil_opt }}"
           MMT="${{ github.event.inputs.multi_manager_throne }}"
@@ -1413,7 +1402,7 @@ jobs:
             export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
             export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
             export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
-            export TG_UFIX="$UFIX" TG_TCPND="$TCPND" TG_ZWB="$ZWB"
+            export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
             export TG_SCHED="$SCHED" TG_MMT="$MMT" TG_CLANG="$CLANG"
             export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
             export TG_LRNG="$LRNG" TG_WLB="$WLB"
@@ -1478,7 +1467,6 @@ jobs:
                   feat(e("TG_MM"),     "Multi-Manager (apk_sign)"),
                   feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
-                  feat(e("TG_TCPND"), "TCP NoDelay"),
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
                   feat(e("TG_SCHED"), "SchedUtil Optimizations"),
                   feat(e("TG_MMT"),    "Throne Multi-Manager Patch"),
@@ -1553,7 +1541,7 @@ jobs:
           $(_f $SUSFS) SuSFS  $(_fb $KPM) KPM(${KPM})  $(_f $BBG) BBG  $(_f $MM) MultiMgr  $(_f $MMT) Throne
 
           <b>Network &amp; IO:</b>
-          $(_fb $BBR) BBR/Brutal(${BBR})  $(_f $ADIOS) ADIOS  $(_f $TCPND) TCP_ND
+          $(_fb $BBR) BBR/Brutal(${BBR})  $(_f $ADIOS) ADIOS
 
           <b>Memory &amp; FS:</b>
           $(_f $LZ4) LZ4·1.10  $(_f $LZ4KD) LZ4KD  $(_f $ZWB) ZRAM_WB
@@ -1681,7 +1669,6 @@ jobs:
           - **Baseband Guard Support:** ${{ github.event.inputs.baseband_guard }}
           - **HMBIRD SCX Scheduler:** ${{ github.event.inputs.hmbird_enable }}
           - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
-          - **TCP NODELAY:** ${{ github.event.inputs.tcp_nodelay }}
           - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
           - **SchedUtil Optimizations:** ${{ github.event.inputs.schedutil_opt }}
           - **Multi-Manager Throne Patch:** ${{ github.event.inputs.multi_manager_throne }}
