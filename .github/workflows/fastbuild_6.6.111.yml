@@ -191,7 +191,7 @@ jobs:
           echo "Cloning source repository..."
           curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.111_oneplus13_coloros16.0.5.zip -o common.zip && 
           unzip -q common.zip && 
-          mv "OnePlus_Kernel_Backport-6.6.111_oneplus13_coloros16.0.5" common &&
+          mv OnePlus_Kernel_Backport-* common &&
           rm -rf common.zip &
 
           # ИСПРАВЛЕНИЕ: Проверяем clang_version
@@ -831,7 +831,7 @@ jobs:
           SU_C="common/kernel/sched/cpufreq_schedutil.c"
           if [ -f "$SU_C" ]; then
             # Меняем дефолтный rate limit с 1000us на 500us
-            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 500/' "$SU_C" 2>/dev/null || true
+            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 1000/' "$SU_C" 2>/dev/null || true
           fi
 
       - name: CPU Optimizations (Oryon SM8750)
@@ -845,7 +845,7 @@ jobs:
           CONFIG_ARCH_QCOM=y
           CONFIG_HZ_300=y
           CONFIG_PREEMPT=y
-          CONFIG_NO_HZ_FULL=y
+          CONFIG_NO_HZ_IDLE=y
           EOF
           # Добавляем -mcpu=oryon если поддерживается компилятором
           if ${{ github.event.inputs.clang_version == 'clang22' }} || \
@@ -913,8 +913,9 @@ jobs:
         run: |
           echo "Enabling LRNG (Linux Random Number Generator) v59..."
           # LRNG патч от Epicmann24/SukiSU
-          git clone --depth=1 \
-            https://github.com/smuellerDD/lrng.git /tmp/lrng_src 2>/dev/null || true
+          git clone --depth=1 https://github.com/smuellerDD/lrng.git /tmp/lrng_src
+          cp -r /tmp/lrng_src/drivers/char/lrng/* drivers/char/lrng/
+          # И не забудь пропатчить Kconfig/Makefile в drivers/char/
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_LRNG=y
           CONFIG_LRNG_SHA256=y
