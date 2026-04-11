@@ -127,7 +127,7 @@ on:
         description: 'Force TCP NODELAY (lower latency for gaming)'
         required: true
         type: boolean
-        default: true
+        default: false
       zram_writeback:
         description: 'Enable ZRAM Writeback (better memory management)'
         required: true
@@ -182,7 +182,7 @@ on:
         description: 'Enable Wakelock Blocker (better idle battery drain)'
         required: true
         type: boolean
-        default: false
+        default: true
 
 jobs:
   build:
@@ -865,6 +865,132 @@ jobs:
             # Меняем дефолтный rate limit с 1000us на 500us
             sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 500/' "$SU_C" 2>/dev/null || true
           fi
+
+      - name: CPU Optimizations (Oryon SM8750)
+        if: inputs.cpu_opt
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Applying Oryon CPU optimizations for SM8750..."
+          # Oryon MCPU tuning — специфично для Snapdragon 8 Elite
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_ARM64_ERRATUM_2658417=y
+          CONFIG_ARCH_QCOM=y
+          CONFIG_HZ_300=y
+          CONFIG_PREEMPT=y
+          CONFIG_NO_HZ_FULL=y
+          EOF
+          # Добавляем -mcpu=oryon если поддерживается компилятором
+          if ${{ github.event.inputs.clang_version == 'clang22' }} || \
+             [ "${{ github.event.inputs.clang_version }}" = "clang22" ]; then
+            echo "Adding Oryon MCPU flag for clang22..."
+            # Патчим Makefile чтобы добавить -mcpu=oryon для arm64
+            ARCH_MK="arch/arm64/Makefile"
+            if [ -f "$ARCH_MK" ] && ! grep -q "mcpu=oryon" "$ARCH_MK"; then
+              sed -i '/^KBUILD_CFLAGS/a KBUILD_CFLAGS += -mcpu=oryon' "$ARCH_MK" 2>/dev/null || true
+            fi
+          fi
+
+      - name: F2FS Optimizations
+        if: inputs.f2fs_opt
+        working-directory: kernel_workspace
+        run: |
+          echo "Enabling F2FS optimizations..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_F2FS_FS=y
+          CONFIG_F2FS_STAT_FS=y
+          CONFIG_F2FS_FS_XATTR=y
+          CONFIG_F2FS_FS_POSIX_ACL=y
+          CONFIG_F2FS_FS_SECURITY=y
+          CONFIG_F2FS_FS_COMPRESSION=y
+          CONFIG_F2FS_FS_LZO=y
+          CONFIG_F2FS_FS_LZ4=y
+          CONFIG_F2FS_FS_ZSTD=y
+          EOF
+
+      - name: Enable WireGuard
+        if: inputs.wireguard
+        working-directory: kernel_workspace
+        run: |
+          echo "Enabling WireGuard..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_WIREGUARD=y
+          EOF
+
+      - name: Enable Full Netfilter
+        if: inputs.netfilter_full
+        working-directory: kernel_workspace
+        run: |
+          echo "Enabling full Netfilter support..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_NF_CONNTRACK=y
+          CONFIG_NF_CONNTRACK_MARK=y
+          CONFIG_NF_CONNTRACK_ZONES=y
+          CONFIG_NF_CONNTRACK_TIMESTAMP=y
+          CONFIG_NF_CONNTRACK_EVENTS=y
+          CONFIG_NF_CONNTRACK_TIMEOUT=y
+          CONFIG_NF_CONNTRACK_LABELS=y
+          CONFIG_NF_NAT=y
+          CONFIG_NF_NAT_MASQUERADE=y
+          CONFIG_NETFILTER_XT_MATCH_HASHLIMIT=y
+          CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
+          CONFIG_NETFILTER_XT_MATCH_CONNLIMIT=y
+          CONFIG_NETFILTER_XT_MATCH_STATE=y
+          CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
+          CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
+          EOF
+
+      - name: Enable Kyber IO Scheduler
+        if: inputs.iosched_kyber
+        working-directory: kernel_workspace
+        run: |
+          echo "Enabling Kyber IO Scheduler..."
+          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_MQ_IOSCHED_KYBER=y
+          EOF
+
+      - name: Enable LRNG v59
+        if: inputs.lrng_enable
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Enabling LRNG (Linux Random Number Generator) v59..."
+          # LRNG патч от Epicmann24/SukiSU
+          git clone --depth=1 \
+            https://github.com/smuellerDD/lrng.git /tmp/lrng_src 2>/dev/null || true
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_LRNG=y
+          CONFIG_LRNG_SHA256=y
+          CONFIG_LRNG_COLLECTION_SIZE=1024
+          CONFIG_LRNG_HEALTH_TESTS=y
+          CONFIG_LRNG_RCT_CUTOFF=31
+          CONFIG_LRNG_APT_CUTOFF=325
+          CONFIG_LRNG_IRQ=y
+          CONFIG_LRNG_CONTINUOUS_COMPRESSION_ENABLED=y
+          EOF
+
+      - name: Enable Wakelock Blocker
+        if: inputs.wakelock_blocker
+        working-directory: kernel_workspace/common
+        run: |
+          echo "Enabling Wakelock Blocker..."
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_PM_WAKELOCKS=y
+          CONFIG_PM_WAKELOCKS_GC=y
+          CONFIG_PM_WAKELOCKS_LIMIT=100
+          EOF
+          # Патч для принудительного блокирования известных wakelocks
+          WAKELOCK_C="kernel/power/wakelock.c"
+          if [ -f "$WAKELOCK_C" ]; then
+            # Добавляем список заблокированных wakelocks от cctv18/Epicmann24
+            cat >> "$WAKELOCK_C" << 'WLEOF'
+          /* palaziks: wakelock blocker list */
+          static const char * const blocked_wakelocks[] = {
+              "WLAN_pm_wlock",
+              "IPA_WS",
+              "qcom_rx_wakelock",
+              "event0",
+          };
+          WLEOF
+          fi
  
       - name: Patch throne_tracker for true multi-manager
         if: inputs.multi_manager_throne
@@ -1250,6 +1376,11 @@ jobs:
           SCHED="${{ github.event.inputs.schedutil_opt }}"
           MMT="${{ github.event.inputs.multi_manager_throne }}"
           CLANG="${{ github.event.inputs.clang_version }}"
+          CPU_OPT="${{ github.event.inputs.cpu_opt }}"
+          F2FS="${{ github.event.inputs.f2fs_opt }}"
+          WG="${{ github.event.inputs.wireguard }}"
+          LRNG="${{ github.event.inputs.lrng_enable }}"
+          WLB="${{ github.event.inputs.wakelock_blocker }}"
 
           case "$KSU_TYPE" in
             ksunext)  KSU_DISPLAY="KernelSU Next" ;;
