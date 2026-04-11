@@ -64,11 +64,6 @@ on:
           - 'false'
           - 'true'
           - 'default'
-      better_net:
-        description: 'Enable Better Network (Advanced iptables/IPset support)'
-        required: true
-        type: boolean
-        default: false
       adios_enable:
         description: 'Enable ADIOS IO Scheduler (Improves IO read/write performance)'
         required: true
@@ -154,11 +149,6 @@ on:
         default: false
       netfilter_full:
         description: 'Full Netfilter (conntrack, NAT, hashlimit)'
-        required: true
-        type: boolean
-        default: false
-      iosched_kyber:
-        description: 'Enable Kyber IO Scheduler (alternative to ADIOS)'
         required: true
         type: boolean
         default: false
@@ -917,15 +907,6 @@ jobs:
           CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
           EOF
 
-      - name: Enable Kyber IO Scheduler
-        if: inputs.iosched_kyber
-        working-directory: kernel_workspace
-        run: |
-          echo "Enabling Kyber IO Scheduler..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_MQ_IOSCHED_KYBER=y
-          EOF
-
       - name: Enable LRNG v59
         if: inputs.lrng_enable
         working-directory: kernel_workspace/common
@@ -969,37 +950,6 @@ jobs:
           };
           WLEOF
           fi
-          
-      - name: Configure Better Net
-        if: inputs.better_net
-        run: |
-          cd kernel_workspace
-          echo "CONFIG_BPF_STREAM_PARSER=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NETFILTER_XT_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_MAX=65534" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPMARK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTIP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_MAC=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETNET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_HASH_NETIFACE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP_SET_LIST_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          cd common
-          wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/config.patch || true
-          patch -p1 -F 3 < config.patch || true
 
       - name: Configure BBR & Brutal
         run: |
@@ -1257,7 +1207,6 @@ jobs:
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
-          echo "IPset: ${{ github.event.inputs.better_net }}" >> ./ak3.log
           echo "BBR&Brutal: ${{ github.event.inputs.bbr_enable }}" >> ./ak3.log
           echo "ADIOS: ${{ github.event.inputs.adios_enable }}" >> ./ak3.log
           echo "Re-Kernel: ${{ github.event.inputs.rekernel_enable }}" >> ./ak3.log
@@ -1602,7 +1551,6 @@ jobs:
           - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
           - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
           - **LZ4KD Support:** ${{ github.event.inputs.lz4kd_enable }}
-          - **Network Enhancement:** ${{ github.event.inputs.better_net }}
           - **BBR/Brutal TCP Algorithms:** ${{ github.event.inputs.bbr_enable }}
           - **ADIOS IO Scheduler:** ${{ github.event.inputs.adios_enable }}
           - **Re-Kernel Support:** ${{ github.event.inputs.rekernel_enable }}
