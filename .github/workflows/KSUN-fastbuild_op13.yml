@@ -1188,17 +1188,7 @@ jobs:
           BBG="${{ github.event.inputs.baseband_guard }}"
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
-          MM_RAW="${{ github.event.inputs.multi_manager }}"
-          if [ "$MM_RAW" = "full" ]; then
-            MM="true"
-            MM_DISP="full"
-          elif [ "$MM_RAW" = "true" ]; then
-            MM="true"
-            MM_DISP="true"
-          else
-            MM="false"
-            MM_DISP="false"
-          fi
+          MM="${{ github.event.inputs.multi_manager }}"
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
@@ -1231,7 +1221,7 @@ jobs:
             export TG_REPO="$REPO"
             export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
             export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
-            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_MM_DISP="$MM_DISP" TG_HMBIRD="$HMBIRD"
+            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
             export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
             export TG_SCHED="$SCHED" TG_CLANG="$CLANG"
             export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
@@ -1294,7 +1284,7 @@ jobs:
                   feat(e("TG_BBG"),    "Baseband Guard"),
                   feat(e("TG_LZ4"),    "LZ4 1.10.0 + ZSTD 1.5.7"),
                   feat(e("TG_LZ4KD"), "LZ4KD ZRAM"),
-                  feat(e("TG_MM"),     f"Multi-Manager ({e('TG_MM_DISP')})"),
+                  feat(e("TG_MM"),     "Multi-Manager Support"),
                   feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
@@ -1367,7 +1357,7 @@ jobs:
           🏷 <code>${{ github.event.inputs.kernel_version }}-${SUFFIX}</code> · LTO: <code>${LTO}</code> · <code>${CLANG}</code>
 
           <b>Root &amp; Security:</b>
-          $(_f $SUSFS) SuSFS  $(_fb $KPM) KPM(${KPM})  $(_f $BBG) BBG  $(_f $MM) MultiMgr(${MM_DISP})
+          $(_f $SUSFS) SuSFS  $(_fb $KPM) KPM(${KPM})  $(_f $BBG) BBG  $(_f $MM) MultiMgr
 
           <b>Network &amp; IO:</b>
           $(_fb $BBR) BBR/Brutal(${BBR})  $(_f $ADIOS) ADIOS
