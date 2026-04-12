@@ -1114,6 +1114,11 @@ jobs:
             KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
             Image
 
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+            all modules_install INSTALL_MOD_PATH=../modules_out
+
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
@@ -1158,12 +1163,16 @@ jobs:
           cd kernel_workspace
           git clone https://github.com/cctv18/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
+          mkdir -p ./AnyKernel3/modules/vendor_dlkm/lib/modules
           cd AnyKernel3
+          find ../common/out -name "*.ko" -exec cp {} ./modules/vendor_dlkm/lib/modules/ \;
           cp ../common/out/arch/arm64/boot/Image ./Image
           if [[ ! -f ./Image ]]; then
             echo "Kernel Image not found, build may have failed."
             exit 1
           fi
+          sed -i 's|do.modules=0|do.modules=1|' anykernel.sh
+          sed -i 's|module_extract_dir=.*|module_extract_dir=modules|' anykernel.sh
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             KSU_TYPENAME="SukiSU"
           elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
