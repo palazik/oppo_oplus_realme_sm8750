@@ -611,13 +611,24 @@ jobs:
           fi
 
           echo "::group::SUSFS ↔ KernelSU compat (sed bridge)"
-          if [[ -f "./drivers/kernelsu/supercall.c" ]] && grep -q "susfs_uname_is_active" "./drivers/kernelsu/supercall.c"; then
-            echo "Applying KSUN-SuSFS bridge via sed..."
-            sed -i '$a bool is_susfs_uname_set(void) { return true; }' fs/susfs.c
-            sed -i '$a bool susfs_uname_is_active(void) { return true; }' fs/susfs.c
-            sed -i '$a void susfs_set_uname_from_kernel(void) {}' fs/susfs.c
+          # Проверяем supercall.c (или supercalls.c), и если там есть упоминание uname - шьём мост
+          KSU_FILE=""
+          [ -f "drivers/kernelsu/supercall.c" ] && KSU_FILE="drivers/kernelsu/supercall.c"
+          [ -f "drivers/kernelsu/supercalls.c" ] && KSU_FILE="drivers/kernelsu/supercalls.c"
+
+          if [[ -n "$KSU_FILE" ]] && grep -q "susfs_uname_is_active" "$KSU_FILE"; then
+            if [ -f "fs/susfs.c" ]; then
+              echo "✅ Applying KSUN-SuSFS bridge to fs/susfs.c..."
+              # Добавляем пустую строку в конец, чтобы не приклеиться к последней строке кода
+              echo "" >> fs/susfs.c
+              sed -i '$a bool is_susfs_uname_set(void) { return true; }' fs/susfs.c
+              sed -i '$a bool susfs_uname_is_active(void) { return true; }' fs/susfs.c
+              sed -i '$a void susfs_set_uname_from_kernel(void) {}' fs/susfs.c
+            else
+              echo "⚠️ fs/susfs.c not found, cannot apply bridge!"
+            fi
           else
-            echo "ℹ️ No bridge needed or supercall.c missing."
+            echo "ℹ️ No bridge needed or KSU files missing."
           fi
           echo "::endgroup::"
 
