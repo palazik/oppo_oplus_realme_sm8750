@@ -1162,9 +1162,7 @@ jobs:
           cd kernel_workspace
           git clone https://github.com/cctv18/AnyKernel3 --depth=1
           rm -rf ./AnyKernel3/.git
-          mkdir -p ./AnyKernel3/modules/vendor_dlkm/lib/modules
           cd AnyKernel3
-          find ../common/out -name "*.ko" -exec cp {} ./modules/vendor_dlkm/lib/modules/ \;
           cp ../common/out/arch/arm64/boot/Image ./Image
           if [[ ! -f ./Image ]]; then
             echo "Kernel Image not found, build may have failed."
