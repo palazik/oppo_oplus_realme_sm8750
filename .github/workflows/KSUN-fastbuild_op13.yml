@@ -1214,16 +1214,6 @@ jobs:
           LRNG="${{ github.event.inputs.lrng_enable }}"
           WLB="${{ github.event.inputs.wakelock_blocker }}"
 
-          case "$KSU_TYPE" in
-            ksunext)  KSU_DISPLAY="KernelSU Next" ;;
-            ksu)      KSU_DISPLAY="KernelSU" ;;
-            sukisu)   KSU_DISPLAY="SukiSU Ultra" ;;
-            resukisu) KSU_DISPLAY="ReSukiSU" ;;
-            wildksu)  KSU_DISPLAY="WildKSU" ;;
-            none)     KSU_DISPLAY="No KSU" ;;
-            *)        KSU_DISPLAY="$KSU_TYPE" ;;
-          esac
-
           if [ "$BUILD_STATUS" = "success" ]; then
             STATUS_EMOJI="✅"; STATUS_TEXT="SUCCESS"
           else
