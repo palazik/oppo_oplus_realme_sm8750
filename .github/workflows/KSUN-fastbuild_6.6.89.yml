@@ -19,7 +19,7 @@ on:
           - '6.6.89'
           - '6.6.111'
           - '6.6.102'
-      susfs_enable:
+      SUSFS:
         description: 'Enable SuSFS (Enhances hide environment; might slightly increase battery usage)'
         required: true
         type: boolean
@@ -320,96 +320,56 @@ jobs:
             ccache -sv
           fi
 
-      - name: Setup KernelSU
-        id: ksu_version
+      - name: "Integrate KernelSU-Next (next / next-susfs)"
+        shell: bash
         run: |
-          cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
-            echo "Configuring SukiSU Ultra..."
-            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
-            cd ./KernelSU
-            GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
-            echo "Current Commit Hash: $GIT_COMMIT_HASH"
-            export KSU_VERSION=$KSU_VERSION
-            for i in {1..3}; do
-              KSU_API_VERSION=$(curl -s "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Makefile" | 
-                grep -m1 "KSU_VERSION_API :=" | 
-                awk -F'= ' '{print $2}' | 
-                tr -d '[:space:]')
-              [ -n "$KSU_API_VERSION" ] && break || sleep 1
-            done
-            [ -z "$KSU_API_VERSION" ] && KSU_API_VERSION="3.1.7"
-            echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
-            VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'@cctv18\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"$'@cctv18'
-            sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
-            sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
-            sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
-            awk -v def="$VERSION_DEFINITIONS" '
-              /REPO_OWNER :=/ {print; print def; inserted=1; next}
-              1
-              END {if (!inserted) print def}
-            ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
-
-            KSU_VERSION=$(expr $(git rev-list --count main) + 37185 2>/dev/null || echo 114514)
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-
-            grep -A10 "REPO_OWNER" kernel/Makefile
-            grep "KSU_VERSION_FULL" kernel/Makefile
-            echo "SukiSU Version: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}@cctv18"
-          elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
-            echo "Configuring ReSukiSU..."
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%@cctv18"' >> ./common/arch/arm64/configs/gki_defconfig
-            cd ./KernelSU
-            KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-          elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
-            echo "Configuring KernelSU Next (Official Stock Branch)..."
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
-            cd KernelSU-Next
-            # Версия = количество коммитов в legacy ветке + 10200 (оффсет KSU-Next)
-            KSU_VERSION=$(($(git rev-list --count HEAD) + 30000))
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-            sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
-            KSU_GIT_TAG=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v1.0.0")
-            sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" kernel/Kbuild
-            rm -rf .git
-          elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            echo "Configuring Official KernelSU..."
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s main
-            cd ./KernelSU
-            KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/tiann/KernelSU/commits?sha=main&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-            sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
-          elif [[ ${{ github.event.inputs.ksu_type }} == "wildksu" ]]; then
-            echo "Configuring WildKSU..."
-            # Fetch from the WildKernels repository
-            curl -LSs "https://raw.githubusercontent.com/WildKernels/Wild_KSU/refs/heads/stable/kernel/setup.sh" | bash -s stable
-            
-            # setup.sh usually clones into a folder named Wild_KSU or KernelSU
-            if [ -d "Wild_KSU" ]; then cd Wild_KSU; else cd KernelSU; fi
-            
-            # Calculate the version (commits + 30000 offset for modern managers)
-            LATEST_COMMITS=$(git rev-list --count HEAD)
-            KSU_VERSION=$(($LATEST_COMMITS + 30000))
-            
-            echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-            echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-            
-            # WildKSU is a fork of KSU-Next, so it uses the same Kbuild variable names
-            sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" \
-              kernel/Kbuild 2>/dev/null || true
-            KSU_GIT_TAG=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v1.0.0")
-            sed -i "s/KSU_VERSION_TAG_FALLBACK := v0.0.1/KSU_VERSION_TAG_FALLBACK := $KSU_GIT_TAG/g" \
-              kernel/Kbuild 2>/dev/null || true
-            rm -rf .git
-          else
-            echo "No built-in KernelSU selected, skipping..."
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          
+          # Branch selection:
+          #   SUSFS=On  -> prefer KernelSU-Next dev-susfs (SUSFS v2 compatible), fallback to next-susfs if dev-susfs not found
+          #   SUSFS=Off -> KernelSU-Next next
+          KSU_BRANCH="next"
+          KSU_FALLBACK=""
+          if [[ "${{ github.event.inputs.SUSFS }}" == "On" ]]; then
+            KSU_BRANCH="dev-susfs"
+            KSU_FALLBACK="next-susfs"
           fi
+          
+          tmp="/tmp/ksu_setup.sh"
+
+          url_bases=(
+            "https://raw.githubusercontent.com/pershoot/KernelSU-Next"
+            "https://raw.githubusercontent.com/rifsxd/KernelSU-Next"
+            "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next"
+          )
+
+          branches=("$KSU_BRANCH")
+          if [ -n "$KSU_FALLBACK" ]; then
+            branches+=("$KSU_FALLBACK")
+          fi
+
+          installed=0
+          for b in "${branches[@]}"; do
+            for base in "${url_bases[@]}"; do
+              u="$base/refs/heads/$b/kernel/setup.sh"
+              echo "→ Trying KernelSU setup: $u (branch=$b)"
+              if curl -fsSL "$u" -o "$tmp"; then
+                chmod +x "$tmp"
+                if bash "$tmp" "$b"; then
+                  echo "✅ KernelSU setup OK (branch=$b)"
+                  echo "KSU_BRANCH=$b" >> "$GITHUB_ENV"
+                  installed=1
+                  break 2
+                fi
+              fi
+            done
+          done
+
+          if [ "$installed" -ne 1 ]; then
+            die "KernelSU setup failed from all mirrors/branches"
+          fi
+          echo "✅ KernelSU-Next installed (branch=$KSU_BRANCH)."
 
       - name: Fix ksu selinux linker errors
         working-directory: kernel_workspace/common
@@ -470,30 +430,173 @@ jobs:
           curl -L "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/refs/heads/main/ksun/kernelsu-next_multimanager.patch" -o "kernelsu-next_multimanager.patch"
           patch -p1 < kernelsu-next_multimanager.patch
 
-      - name: Apply SuSFS Patches
-        if: inputs.susfs_enable
+      - name: "Apply SUSFS"
+        shell: bash
         run: |
-          cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} != "none" ]]; then
-            echo "Adding SuSFS patches..."
-            git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch || touch ./common/69_hide_stuff.patch
-            cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./common/
-            cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-            cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-            cd ./common
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
-            patch -p1 -N -F 3 < 69_hide_stuff.patch || true
-            cd ..
+          set -euo pipefail
+
+          if [[ "${{ github.event.inputs.SUSFS }}" != "On" ]]; then
+            echo "SUSFS disabled → skipping."
+            exit 0
+          fi
+
+          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+
+          # Auto-detect kernel source root (some manifests use common/, some use common/common/)
+          CANDIDATES=(
+            "$KERNEL_PLATFORM/common"
+            "$KERNEL_PLATFORM/common/common"
+          )
+
+          KERNEL_DIR=""
+          for c in "${CANDIDATES[@]}"; do
+            if [[ -f "$c/Makefile" && -d "$c/fs" ]]; then
+              KERNEL_DIR="$c"
+              break
+            fi
+          done
+
+          if [[ -z "$KERNEL_DIR" ]]; then
+            echo "::error::Could not detect kernel source root under $KERNEL_PLATFORM"
+            echo "Listing kernel_platform:"
+            ls -la "$KERNEL_PLATFORM" || true
+            echo "Listing common candidates:"
+            ls -la "$KERNEL_PLATFORM/common" || true
+            ls -la "$KERNEL_PLATFORM/common/common" || true
+            exit 1
+          fi
+
+          echo "✅ Kernel root detected: $KERNEL_DIR"
+          cd "$KERNEL_DIR"
+
+          SUSFS_BRANCH="oki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
+          SUSFS_PATCH_TAG="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
+          SUSFS_REPO="https://github.com/cctv18/susfs4oki.git"
+          echo "Using susfs4oki repo: $SUSFS_REPO"
+          echo "Using susfs4oki branch: $SUSFS_BRANCH"
+          echo "Using SUSFS patch tag: $SUSFS_PATCH_TAG"
+
+          SUSFS_FOLDER="$GITHUB_WORKSPACE/susfs4oki"
+          rm -rf "$SUSFS_FOLDER" || true
+
+          echo "→ Checking susfs4oki: $SUSFS_REPO"
+          if ! git ls-remote --exit-code --heads "$SUSFS_REPO" "$SUSFS_BRANCH" >/dev/null 2>&1; then
+            echo "::error::Could not find susfs4oki branch '$SUSFS_BRANCH' on $SUSFS_REPO"
+            exit 1
+          fi
+
+          echo "→ Cloning $SUSFS_REPO ($SUSFS_BRANCH)"
+          git clone --depth 1 --no-tags -b "$SUSFS_BRANCH" "$SUSFS_REPO" "$SUSFS_FOLDER"
+
+          echo "::group::Copy SUSFS source/header files (if present)"
+          # Some SUSFS branches ship extra files outside the main patch.
+          if [[ -d "$SUSFS_FOLDER/kernel_patches/fs" ]]; then
+            cp -a "$SUSFS_FOLDER/kernel_patches/fs/." "$KERNEL_DIR/fs/" || true
+          fi
+          if [[ -d "$SUSFS_FOLDER/kernel_patches/include/linux" ]]; then
+            mkdir -p "$KERNEL_DIR/include/linux"
+            cp -a "$SUSFS_FOLDER/kernel_patches/include/linux/." "$KERNEL_DIR/include/linux/" || true
+          fi
+          echo "::endgroup::"
+
+          # --- Pre-adjustments (borrowed from WildKernel) to help the gki-android15-6.6 patch match ---
+          fake_patched=0
+          if [[ "${{ env.ANDROID_VERSION }}" == "android15" && "${{ env.KERNEL_VERSION }}" == "6.6" ]]; then
+            if [[ -f "./fs/namespace.c" ]] && ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+              if grep -q '#include <trace/hooks/blk.h>' ./fs/namespace.c; then
+                sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace/hooks/fs.h>' ./fs/namespace.c
+              else
+                # Fallback: inject near top of file
+                sed -i '1i #include <trace/hooks/fs.h>' ./fs/namespace.c
+              fi
+            fi
+
+            if [[ -f "./fs/proc/task_mmu.c" ]] && ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+              if grep -q 'int ret = 0, copied = 0;' ./fs/proc/task_mmu.c; then
+                echo "Applying temporary context lines for task_mmu.c (for patch matching)..."
+                sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;'                  -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t *res = NULL;' ./fs/proc/task_mmu.c
+                fake_patched=1
+              else
+                echo "::warning::Anchor line not found in fs/proc/task_mmu.c; skipping temporary context insert."
+              fi
+            fi
+          fi
+
+          PATCH_FILE="$SUSFS_FOLDER/kernel_patches/50_add_susfs_in_${SUSFS_PATCH_TAG}.patch"
+          if [[ ! -f "$PATCH_FILE" ]]; then
+            echo "::error::Missing SUSFS patch file: $PATCH_FILE"
+            echo "Available patches:"
+            ls -la "$SUSFS_FOLDER/kernel_patches" || true
+            exit 1
+          fi
+
+          echo "::group::Apply SUSFS main patch"
+          if patch -p1 --dry-run -R < "$PATCH_FILE" >/dev/null 2>&1; then
+            echo "↪ SUSFS patch already applied"
           else
-            echo "No built-in KSU selected, skipping SuSFS..."
+            if patch -p1 --dry-run --forward < "$PATCH_FILE" >/dev/null 2>&1; then
+              patch -p1 --forward < "$PATCH_FILE"
+            else
+              echo "Patch does not apply cleanly → retrying with fuzz=3"
+              patch -p1 --forward -F 3 < "$PATCH_FILE"
+            fi
           fi
-          if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
-            echo "Adding SuSFS patch for Official KernelSU..."
-            cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
-            cd ./KernelSU
-            patch -p1 < 10_enable_susfs_for_ksu.patch || true
+          echo "::endgroup::"
+
+          # Revert temporary context lines (if we injected them)
+          if [[ "$fake_patched" == "1" ]]; then
+            sed -i -e '/unsigned int nr_subpages = __PAGE_SIZE \/ PAGE_SIZE;/d'              -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c || true
           fi
+
+
+          echo "::group::SUSFS ↔ KernelSU compat (legacy uname helpers)"
+          # KernelSU-Next v3.x (some forks) may still reference legacy SUSFS uname helpers that were removed/renamed in SUSFS v2.
+          # If so, add small compatibility stubs into fs/susfs.c to satisfy linkage without changing runtime behavior.
+          if [[ -f "./drivers/kernelsu/supercalls.c" ]] && grep -q "susfs_uname_is_active" "./drivers/kernelsu/supercalls.c"; then
+            echo "KernelSU references legacy uname helpers → adding SUSFS v2 compat stubs"
+            if [[ -f "./fs/susfs.c" ]] && ! grep -q "susfs_uname_is_active" "./fs/susfs.c"; then
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('./fs/susfs.c')
+          code = r'''
+          
+          /* --- SUSFS v2 compatibility for older KernelSU-Next (legacy uname helpers) --- */
+          /* Some KernelSU forks still call these legacy helpers. SUSFS v2 uses susfs_set_uname()/susfs_spoof_uname(). */
+          #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+          bool susfs_uname_is_active(void) { return true; }
+          #else
+          bool susfs_uname_is_active(void) { return false; }
+          #endif
+          
+          /* Legacy no-op: SUSFS v2 persists uname spoof via susfs_set_uname() from userspace. */
+          void susfs_set_uname_from_kernel(void) { }
+          
+          '''
+          src = p.read_text(encoding='utf-8')
+          if 'susfs_uname_is_active' not in src:
+              p.write_text(src + code, encoding='utf-8')
+          PY
+            else
+              echo "fs/susfs.c missing or compat stubs already present; skipping."
+            fi
+          else
+            echo "KernelSU does not reference legacy uname helpers; no compat needed."
+          fi
+          echo "::endgroup::"
+
+          echo "::group::SUSFS sanity checks"
+          # These checks prevent "SUSFS=On" kernels that actually don't include SUSFS.
+          if [[ ! -f "./fs/susfs.c" ]]; then
+            echo "::warning::fs/susfs.c not found (patch may embed SUSFS in other files)."
+          fi
+
+          if ! grep -Rqs "KSU_SUSFS\|SUSFS" ./fs ./include/linux 2>/dev/null; then
+            echo "::error::SUSFS strings not found in fs/ or include/linux after patching. Integration likely failed."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          echo "✅ SUSFS patching complete."
           
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         if: inputs.lz4_enable
@@ -524,24 +627,19 @@ jobs:
           patch -p1 -F 3 < lz4kd.patch || true
           
       - name: Configure SuSFS
-        if: inputs.susfs_enable
+        if: inputs.SUSFS
         run: |
           cd kernel_workspace
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
           
       - name: Configure KSU & Misc
         run: |
