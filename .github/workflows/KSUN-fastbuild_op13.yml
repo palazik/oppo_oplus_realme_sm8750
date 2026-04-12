@@ -651,7 +651,6 @@ jobs:
           cd kernel_workspace
           DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
           echo "CONFIG_KSU=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
