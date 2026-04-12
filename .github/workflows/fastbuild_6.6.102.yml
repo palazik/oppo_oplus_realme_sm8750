@@ -1,12 +1,12 @@
-name: 6.6.111 OP13 OKI Fast Build
+name: 6.6.102 OP13 OKI Fast Build
 
 env:
   TZ: Asia/Shanghai
   ANDROID_VERSION: 'android15'
   KERNEL_VERSION: '6.6'
-  SUB_VERSION: '111'
+  SUB_VERSION: '102'
   KERNEL_NAME: 'android15-8-g29d86c5fc9dd-abogki428889875-4k'
-  CCACHE_KEY: ccache-neov4-6.6.111
+  CCACHE_KEY: ccache-neov4-6.6.102
 
 on:
   workflow_dispatch:
@@ -189,7 +189,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 &
           
           echo "Cloning source repository..."
-          curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.111_oneplus13_coloros16.0.5.zip -o common.zip && 
+          curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.102_oneplus13_coloros16.0.5.zip -o common.zip && 
           unzip -q common.zip && 
           mv OnePlus_Kernel_Backport-* common &&
           rm -rf common.zip &
@@ -1325,7 +1325,7 @@ jobs:
                   ]},
                   {"tag": "tr", "children": [
                       {"tag": "td", "children": ["Kernel"]},
-                      {"tag": "td", "children": ["6.6.111-android15"]}
+                      {"tag": "td", "children": ["6.6.102-android15"]}
                   ]},
                   {"tag": "tr", "children": [
                       {"tag": "td", "children": ["Manager"]},
@@ -1391,7 +1391,7 @@ jobs:
 
           data = {
               "access_token": "b968da509d524a21f53f1f2db42fa18d5c0d54a1b8e4b65c",
-              "title": f"palaziks kernel — OP13 6.6.111-{e('TG_SUFFIX')} #{e('TG_BUILD_NUM')}",
+              "title": f"palaziks kernel — OP13 6.6.102-{e('TG_SUFFIX')} #{e('TG_BUILD_NUM')}",
               "author_name": "palaziks",
               "author_url": f"https://github.com/{e('TG_REPO')}",
               "content": json.dumps(content),
@@ -1432,7 +1432,7 @@ jobs:
 
           📱 <b>OnePlus 13 PJZ110</b> · SM8750
           🔧 <b>${KSU_DISPLAY}</b> <code>v${KSUVER}</code>
-          🏷 <code>6.6.111-${SUFFIX}</code> · LTO: <code>${LTO}</code> · <code>${CLANG}</code>
+          🏷 <code>6.6.102-${SUFFIX}</code> · LTO: <code>${LTO}</code> · <code>${CLANG}</code>
 
           <b>Root &amp; Security:</b>
           $(_f $SUSFS) SuSFS  $(_fb $KPM) KPM(${KPM})  $(_f $BBG) BBG  $(_f $MM) MultiMgr(${MM_DISP})
