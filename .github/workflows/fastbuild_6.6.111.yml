@@ -759,6 +759,10 @@ jobs:
           if [[ "${{ github.event.inputs.susfs_enable }}" == "false" ]]; then
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+          # --- ДЕЛАЕМ ДРАЙВЕР ДИСПЛЕЯ ВСТРОЕННЫМ (BUILT-IN) ---
+          echo "CONFIG_DRM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_DRM_MSM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          # ----------------------------------------------------
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
@@ -1113,16 +1117,6 @@ jobs:
             CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
             KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
             Image
-
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-            CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
-            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
-            all
-
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-            CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
-            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
-            modules_install INSTALL_MOD_PATH=../modules_out
 
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
