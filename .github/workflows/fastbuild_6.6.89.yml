@@ -850,14 +850,14 @@ jobs:
           CONFIG_PREEMPT=y
           CONFIG_NO_HZ_IDLE=y
           EOF
+          
           # Добавляем -mcpu=oryon если поддерживается компилятором
-          if ${{ github.event.inputs.clang_version == 'clang22' }} || \
-             [ "${{ github.event.inputs.clang_version }}" = "clang22" ]; then
+          if [ "${{ github.event.inputs.clang_version }}" = "clang22" ]; then
             echo "Adding Oryon MCPU flag for clang22..."
-            # Патчим Makefile чтобы добавить -mcpu=oryon для arm64
             ARCH_MK="arch/arm64/Makefile"
             if [ -f "$ARCH_MK" ] && ! grep -q "mcpu=oryon" "$ARCH_MK"; then
-              sed -i '/^KBUILD_CFLAGS/a KBUILD_CFLAGS += -mcpu=oryon' "$ARCH_MK" 2>/dev/null || true
+              # SAFE APPEND: Adds the flags to the very bottom of the file
+              echo -e "\nKBUILD_CFLAGS += -mcpu=oryon\nKBUILD_AFLAGS += -mcpu=oryon" >> "$ARCH_MK"
             fi
           fi
 
