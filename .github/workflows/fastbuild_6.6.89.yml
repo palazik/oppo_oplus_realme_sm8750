@@ -210,7 +210,6 @@ jobs:
             curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
             tar -C build-tools -zxf build-tools.tar.gz
             rm -rf build-tools.tar.gz &
-          fi
 
           elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
             echo "Cloning LLVM-Clang18 toolchain..." &&
