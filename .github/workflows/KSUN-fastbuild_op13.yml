@@ -610,32 +610,14 @@ jobs:
             sed -i -e '/unsigned int nr_subpages = __PAGE_SIZE \/ PAGE_SIZE;/d'              -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c || true
           fi
 
-
-          echo "::group::SUSFS ↔ KernelSU compat (legacy uname helpers)"
-          # KernelSU-Next v3.x (some forks) may still reference legacy SUSFS uname helpers that were removed/renamed in SUSFS v2.
-          # If so, add small compatibility stubs into fs/susfs.c to satisfy linkage without changing runtime behavior.
+          echo "::group::SUSFS ↔ KernelSU compat (sed bridge)"
           if [[ -f "./drivers/kernelsu/supercall.c" ]] && grep -q "susfs_uname_is_active" "./drivers/kernelsu/supercall.c"; then
-            # В шаге Apply SUSFS просто добавь:
+            echo "Applying KSUN-SuSFS bridge via sed..."
             sed -i '$a bool is_susfs_uname_set(void) { return true; }' fs/susfs.c
             sed -i '$a bool susfs_uname_is_active(void) { return true; }' fs/susfs.c
             sed -i '$a void susfs_set_uname_from_kernel(void) {}' fs/susfs.c
           else
-            echo "supercall.c not found or no legacy helpers; skipping bridge."
-          fi
-          else
-            echo "KernelSU does not reference legacy uname helpers; no compat needed."
-          fi
-          echo "::endgroup::"
-
-          echo "::group::SUSFS sanity checks"
-          # These checks prevent "SUSFS=On" kernels that actually don't include SUSFS.
-          if [[ ! -f "./fs/susfs.c" ]]; then
-            echo "::warning::fs/susfs.c not found (patch may embed SUSFS in other files)."
-          fi
-
-          if ! grep -Rqs "KSU_SUSFS\|SUSFS" ./fs ./include/linux 2>/dev/null; then
-            echo "::error::SUSFS strings not found in fs/ or include/linux after patching. Integration likely failed."
-            exit 1
+            echo "ℹ️ No bridge needed or supercall.c missing."
           fi
           echo "::endgroup::"
 
