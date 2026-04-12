@@ -1,4 +1,4 @@
-name: 6.6.89 OP13 OKI Fast Build
+name: KSU Next 6.6.89 OP13 Build
 
 env:
   TZ: Asia/Shanghai
@@ -11,18 +11,15 @@ env:
 on:
   workflow_dispatch:
     inputs:
-      ksu_type:
-        description: 'KernelSU Branch (ReSukiSU / SukiSU Ultra / KernelSU Next / KSU Official / none)'
+      kernel_source:
+        description: 'Choose kernel version to build'
         required: true
         type: choice
-        default: 'ksunext'
+        default: '6.6.89'
         options:
-          - 'ksunext'
-          - 'ksu'
-          - 'sukisu'
-          - 'resukisu'
-          - 'wildksu'
-          - 'none'
+          - '6.6.89'
+          - '6.6.111'
+          - '6.6.102'
       susfs_enable:
         description: 'Enable SuSFS (Enhances hide environment; might slightly increase battery usage)'
         required: true
@@ -450,234 +447,13 @@ jobs:
             echo "Already patched"
           fi
 
-      - name: Apply Multi-Manager (apksigner dynamic hashes)
+      - name: Apply Multi-Manager
         if: inputs.multi_manager != 'false'
         run: |
-          sudo apt-get install -y --no-install-recommends apksigner 2>/dev/null
-          mkdir -p /tmp/manager_apks
-
-          dl_apk() {
-            local REPO="$1" PAT="$2" OUT="$3"
-            local URL
-            URL=$(curl -sL \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${REPO}/releases" | \
-              python3 -c "
-          import sys,json,re
-          data=json.load(sys.stdin)
-          p=re.compile(r'${PAT}',re.I)
-          for rel in (data if isinstance(data,list) else [data]):
-              u=[a['browser_download_url'] for a in rel.get('assets',[]) if p.search(a['name'])]
-              if u: print(u[0]); break
-              " 2>/dev/null)
-            [ -n "$URL" ] && wget -qO "$OUT" "$URL" && echo "  OK: $OUT ($REPO)" \
-              || echo "  WARN: no match in $REPO"
-          }
-
-          echo "==> Downloading APKs..."
-          dl_apk "tiann/KernelSU"             '\.apk$'               /tmp/manager_apks/ksu.apk
-          dl_apk "KernelSU-Next/KernelSU-Next" '^(?!.*spoof).*\.apk$' /tmp/manager_apks/ksunext.apk
-          dl_apk "KernelSU-Next/KernelSU-Next" 'spoof.*\.apk$'        /tmp/manager_apks/ksunext_spoof.apk
-          dl_apk "SukiSU-Ultra/SukiSU-Ultra"   '\.apk' /tmp/manager_apks/sukisu.apk
-          dl_apk "WildKernels/Wild_KSU" '^(?!.*Spoof).*\.apk$' /tmp/manager_apks/wildksu.apk
-          dl_apk "WildKernels/Wild_KSU" 'Spoof.*\.apk$'        /tmp/manager_apks/wildksu_spoof.apk
-
-          ls -lh /tmp/manager_apks/
-
-          # Получаем size (из APK signing block) + sha256 (от apksigner)
-          python3 << 'PYEOF'
-          import os, subprocess, re, sys, struct, hashlib
-
-          APK_DIR = '/tmp/manager_apks'
-
-          def get_cert_size_from_apk(path):
-            with open(path, 'rb') as f:
-                data = bytearray(f.read())
-            
-            eocd_offset = None
-            for i in range(0, 0x10000):
-                if len(data) < i + 2:
-                    break
-                n = struct.unpack_from('<H', data, len(data) - i - 2)[0]
-                if n == i:
-                    pos = len(data) - i - 22
-                    if pos < 0:
-                        continue
-                    sig = struct.unpack_from('<I', data, pos)[0]
-                    if (sig ^ 0xcafebabe) == 0xccfbf1ee:
-                        eocd_offset = pos
-                        break
-            
-            if eocd_offset is None:
-                return None
-            
-            cd_offset = struct.unpack_from('<I', data, eocd_offset + 16)[0]
-            if cd_offset < 24:
-                return None
-            
-            magic_pos = cd_offset - 16
-            magic = data[magic_pos:magic_pos + 16]
-            if magic != b'APK Sig Block 42':
-                return None
-            
-            size_of_block = struct.unpack_from('<Q', data, cd_offset - 24)[0]
-            pairs_start = cd_offset - size_of_block - 8
-            pairs_end   = cd_offset - 24
-            
-            pos = pairs_start
-            while pos < pairs_end:
-                if pos + 12 > len(data):
-                    break
-                pair_sz = struct.unpack_from('<Q', data, pos)[0]
-                pair_id = struct.unpack_from('<I', data, pos + 8)[0]
-                if pair_sz < 4 or pos + 8 + pair_sz > pairs_end + 8:
-                    break
-                val = data[pos + 12 : pos + 8 + pair_sz]
-                pos = pos + 8 + pair_sz
-                
-                if pair_id != 0x7109871a:
-                    continue
-                
-                p = 0
-                try:
-                    p += 4  # signer-sequence length
-                    p += 4  # signer length
-                    p += 4  # signed data length
-                    dig_len = struct.unpack_from('<I', val, p)[0]; p += 4
-                    p += dig_len  # skip digests
-                    p += 4        # certificates length
-                    cert_len = struct.unpack_from('<I', val, p)[0]
-                    return cert_len
-                except struct.error:
-                    continue
-            return None
-
-          entries = []
-          seen_hashes = set()
-
-          for fname in sorted(os.listdir(APK_DIR)):
-              if not fname.endswith('.apk'):
-                  continue
-              fpath = os.path.join(APK_DIR, fname)
-              if os.path.getsize(fpath) < 1000:
-                  print(f"  SKIP {fname}: too small")
-                  continue
-
-              try:
-                  out = subprocess.check_output(
-                      ['apksigner', 'verify', '--print-certs', fpath],
-                      stderr=subprocess.STDOUT, text=True)
-                  m = re.search(r'Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})', out)
-                  if not m:
-                      print(f"  SKIP {fname}: no SHA-256 from apksigner")
-                      continue
-                  sha256 = m.group(1).lower()
-              except Exception as e:
-                  print(f"  SKIP {fname}: apksigner error: {e}")
-                  continue
-
-              cert_size = get_cert_size_from_apk(fpath)
-              if cert_size is None:
-                  print(f"  SKIP {fname}: cannot parse cert size")
-                  continue
-
-              if sha256 in seen_hashes:
-                  print(f"  DUP  {fname}: same cert as existing entry")
-                  continue
-              seen_hashes.add(sha256)
-
-              print(f"  OK   {fname}: size=0x{cert_size:x}  sha256={sha256}")
-              entries.append((fname, cert_size, sha256))
-
-          if not entries:
-              print("ERROR: no entries!"); sys.exit(1)
-
-          lines = ['bool is_manager_apk(char *path)', '{']
-          for name, size, h in entries:
-              lines.append(f'    /* {name} */')
-              lines.append(f'    if (check_v2_signature(path, 0x{size:x}u, "{h}")) return true;')
-          lines.append('    return false;')
-          lines.append('}')
-          new_func = '\n'.join(lines)
-
-          with open('/tmp/mm_func.c', 'w') as f:
-              f.write(new_func)
-          print(f"\nGenerated is_manager_apk() with {len(entries)} managers")
-          PYEOF
-
-          [ -s /tmp/mm_func.c ] || { echo "ERROR: mm_func.c empty"; exit 1; }
-          echo "==> Generated function:"
-          cat /tmp/mm_func.c
-
-          APK_SIGN=$(find kernel_workspace -name "apk_sign.c" | head -1)
-          [ -z "$APK_SIGN" ] && { echo "apk_sign.c not found"; exit 0; }
-          echo "==> Patching: $APK_SIGN"
-
-          python3 - "$APK_SIGN" << 'PYEOF2'
-          import re, sys
-
-          path = sys.argv[1]
-          with open(path) as f:
-              src = f.read()
-
-          with open('/tmp/mm_func.c') as f:
-              new_func = f.read()
-
-          src = src.replace(
-              'if (v3_signing_exist || v3_1_signing_exist)',
-              'if (0 /* mm: skip v3 check */)'
-          )
-          src = src.replace(
-              'if (v2_signing_blocks != 1)',
-              'if (0 /* mm: skip blocks check */)'
-          )
-
-          pat = re.compile(
-              r'bool\s+is_manager_apk\s*\(\s*char\s*\*\s*path\s*\)\s*\{.*?\n\}',
-              re.DOTALL
-          )
-          m = pat.search(src)
-          if not m:
-              print("ERROR: is_manager_apk() not found!")
-              sys.exit(1)
-
-          src = src[:m.start()] + new_func + src[m.end():]
-
-          with open(path, 'w') as f:
-              f.write(src)
-
-          print(f"Done: {path}")
-          PYEOF2
-
-          # -- Экспериментальный блок --
-          if [ "${{ github.event.inputs.multi_manager }}" = "full" ]; then
-            echo "==> Applying experimental throne_tracker patch..."
-            THRONE=$(find kernel_workspace -name "throne_tracker.c" | head -1)
-            [ -z "$THRONE" ] && { echo "throne_tracker.c not found"; exit 0; }
-            
-            python3 << 'PYEOF3'
-          import re, sys
-          path = sys.argv[1]
-          with open(path) as f:
-              src = f.read()
-
-          if 'ksu_multi_manager' in src:
-              print("Already patched"); sys.exit(0)
-
-          src = src.replace(
-              'search_manager("/data/app", 2, &uid_list)',
-              'search_manager("/data/app", 3, &uid_list) /* ksu_multi_manager */'
-          )
-          src = re.sub(
-              r'(ksu_set_manager_uid\(uid\);)',
-              r'/* ksu_multi_manager: accept all valid managers */\n\t\t\1',
-              src
-          )
-          with open(path, 'w') as f:
-              f.write(src)
-          print(f"Patched {path}: multi-manager throne support enabled")
-          PYEOF3
-          fi
+          cd KernelSU-Next
+          echo "📦 正在启用multimanager支持..."
+          curl -L "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/refs/heads/main/ksun/kernelsu-next_multimanager.patch" -o "kernelsu-next_multimanager.patch"
+          patch -p1 < kernelsu-next_multimanager.patch
 
       - name: Apply SuSFS Patches
         if: inputs.susfs_enable
