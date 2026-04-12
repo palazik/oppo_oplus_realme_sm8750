@@ -320,7 +320,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
           
           # Branch selection:
           #   SUSFS=On  -> prefer KernelSU-Next dev-susfs (SUSFS v2 compatible), fallback to next-susfs if dev-susfs not found
@@ -436,7 +436,7 @@ jobs:
             exit 0
           fi
 
-          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace"
 
           # Auto-detect kernel source root (some manifests use common/, some use common/common/)
           CANDIDATES=(
@@ -934,7 +934,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
 
           apply_best_effort() {
             local p="$1"
@@ -988,7 +988,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
           chmod +x drivers/of/overwriter/overwrite_configs/convert_configs.sh 2>/dev/null || true
           chmod +x drivers/of/overwriter/overwrite_configs/*.sh 2>/dev/null || true
             
