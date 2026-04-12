@@ -920,6 +920,79 @@ jobs:
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 10
+
+      - name: "Clone WildKernel kernel_patches (for HMBIRD etc)"
+        if: inputs.hmbird_enable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          rm -rf kernel_patches || true
+          git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
+          git clone --depth=1 https://github.com/TheWildJames/kernel_patches.git kernel_patches
+
+      - name: "Apply WildKernel patches (HMBIRD/overwriter) (best-effort)"
+        if: inputs.hmbird_enable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+
+          apply_best_effort() {
+            local p="$1"
+            if [ ! -f "$p" ]; then
+              echo "⚠️ Skipped (missing): $(basename "$p")"
+              return 0
+            fi
+
+            local tmp=""
+            if grep -q "GIT binary patch" "$p"; then
+              tmp="$p"
+            else
+              tmp="$(mktemp)"
+              tr -d '\r' < "$p" > "$tmp"
+            fi
+
+            if patch -p1 -F 3 -N --silent < "$tmp"; then
+              echo "✅ Applied: $(basename "$p")"
+            elif git apply --reject --whitespace=nowarn "$tmp" >/dev/null 2>&1; then
+              echo "✅ Applied (git): $(basename "$p")"
+            else
+              echo "⚠️ Skipped (does not apply cleanly): $(basename "$p")"
+            fi
+
+            if [ "$tmp" != "$p" ]; then rm -f "$tmp"; fi
+            return 0
+          }
+
+          echo "Applying HMBIRD-related patches (best-effort)..."
+          HMBIRD_DIR="$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird"
+
+          # Pick the most likely FengChi patch (apply at most ONE)
+          pick_first() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return 0; }; done; return 1; }
+          FENGCHI="$(pick_first             "$HMBIRD_DIR/fengchi_PJZ110_OOS15.patch"             "$HMBIRD_DIR/fengchi_PJZ110_OOS16.patch"             "$HMBIRD_DIR/fengchi_OP13_OOS15.patch"             "$HMBIRD_DIR/fengchi_OP13_OOS16.patch"           )" || true
+          if [ -n "${FENGCHI:-}" ]; then
+            echo "→ FengChi: $(basename "$FENGCHI")"
+            apply_best_effort "$FENGCHI"
+          else
+            echo "⚠️ No FengChi patch matched (skipping fengchi)"
+          fi
+
+          apply_best_effort "$HMBIRD_DIR/overwriter.patch"
+          apply_best_effort "$HMBIRD_DIR/hmbird_config.patch"
+
+          # Optional common optimizations used by WildKernel action (best-effort)
+          COMMON_DIR="$GITHUB_WORKSPACE/kernel_patches/common"
+          apply_best_effort "$COMMON_DIR/optimized_mem_operations.patch"
+          apply_best_effort "$COMMON_DIR/file_struct_8bytes_align.patch"
+
+      - name: "Fix permissions for overwriter scripts"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          chmod +x drivers/of/overwriter/overwrite_configs/convert_configs.sh 2>/dev/null || true
+          chmod +x drivers/of/overwriter/overwrite_configs/*.sh 2>/dev/null || true
             
       - name: Build Kernel
         run: |
