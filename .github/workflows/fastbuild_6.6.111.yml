@@ -1168,8 +1168,6 @@ jobs:
             echo "Kernel Image not found, build may have failed."
             exit 1
           fi
-          sed -i 's|do.modules=1|do.modules=0|' anykernel.sh
-          sed -i 's|module_extract_dir=.*|module_extract_dir=modules|' anykernel.sh
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             KSU_TYPENAME="SukiSU"
           elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
