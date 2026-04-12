@@ -11,7 +11,7 @@ env:
 on:
   workflow_dispatch:
     inputs:
-      kernel_source:
+      kernel_version:
         description: 'Choose kernel version to build'
         required: true
         type: choice
@@ -184,12 +184,28 @@ jobs:
           sudo rm -rf /var/lib/man-db/auto-update &&
           sudo apt update &&
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 &
-          
-          echo "Cloning source repository..."
-          curl -L https://github.com/cctv18/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.89.zip -o common.zip && 
-          unzip -q common.zip && 
-          mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
-          rm -rf common.zip &
+
+          if [[ ${{ github.event.inputs.kernel_version }} == "6.6.89" ]]; then
+            echo "Cloning source repository..."
+            curl -L https://github.com/cctv18/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.89.zip -o common.zip && 
+            unzip -q common.zip && 
+            mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
+            rm -rf common.zip &
+
+          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.111" ]]; then
+            echo "Cloning source repository..."
+            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.111_oneplus13_coloros16.0.5.zip -o common.zip && 
+            unzip -q common.zip && 
+            mv OnePlus_Kernel_Backport-* common &&
+            rm -rf common.zip &
+
+          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.102" ]]; then
+            echo "Cloning source repository..."
+            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.102_oneplus13_coloros16.0.5.zip -o common.zip && 
+            unzip -q common.zip && 
+            mv OnePlus_Kernel_Backport-* common &&
+            rm -rf common.zip &
+          fi
 
           # Checking clang_version
           # Using Google's newest Clang (r584948)
@@ -197,7 +213,7 @@ jobs:
             echo "Fetching Google Clang r584948 (LLVM 22-based)..."
             mkdir -p clang18
             # We use the GoogleSource +archive link you found
-            aria2c -s16 -x16 -k1M "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
+            curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
             tar -C clang18 -zxf clang.tar.gz
             rm -rf clang.tar.gz &
 
