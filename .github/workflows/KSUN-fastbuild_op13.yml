@@ -420,12 +420,28 @@ jobs:
 
       - name: Apply Multi-Manager
         if: inputs.multi_manager
-        working-directory: kernel_workspace/common/KernelSU-Next
         run: |
-          cd KernelSU-Next
-          echo "📦 正在启用multimanager支持..."
-          curl -L "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/refs/heads/main/ksun/kernelsu-next_multimanager.patch" -o "kernelsu-next_multimanager.patch"
-          patch -p1 < kernelsu-next_multimanager.patch
+          echo "📦 Enabling Multi-Manager support..."
+          
+          # 1. Сначала скачиваем патч во временную папку, чтобы не потерять
+          PATCH_URL="https://raw.githubusercontent.com/mrcxlinux/kernel_patches/refs/heads/main/ksun/kernelsu-next_multimanager.patch"
+          curl -L "$PATCH_URL" -o "/tmp/kernelsu-next_multimanager.patch"
+          
+          # 2. Ищем папку KernelSU-Next
+          if [ -d "$GITHUB_WORKSPACE/kernel_workspace/KernelSU-Next" ]; then
+            cd "$GITHUB_WORKSPACE/kernel_workspace/KernelSU-Next"
+            echo "Found KSU in kernel_workspace/KernelSU-Next"
+          elif [ -d "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU-Next" ]; then
+            cd "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU-Next"
+            echo "Found KSU in kernel_workspace/common/KernelSU-Next"
+          else
+            echo "❌ Error: KernelSU-Next directory not found!"
+            exit 1
+          fi
+          
+          # 3. Применяем патч
+          patch -p1 < "/tmp/kernelsu-next_multimanager.patch"
+          echo "✅ Multi-Manager patch applied successfully!"
 
       - name: "Apply SUSFS"
         shell: bash
