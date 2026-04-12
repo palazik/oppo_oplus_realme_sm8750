@@ -97,12 +97,8 @@ on:
       multi_manager:
         description: 'Enable Multi-Manager support (Allows any KSU manager to control root)'
         required: true
-        type: choice
-        default: 'false'
-        options:
-          - 'false'
-          - 'true'
-          - 'full'
+        type: boolean
+        default: true
       hmbird_enable:
         description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
         required: true
@@ -423,7 +419,7 @@ jobs:
           fi
 
       - name: Apply Multi-Manager
-        if: inputs.multi_manager != 'false'
+        if: inputs.multi_manager
         run: |
           cd KernelSU-Next
           echo "📦 正在启用multimanager支持..."
