@@ -1117,7 +1117,12 @@ jobs:
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
             KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
-            all modules_install INSTALL_MOD_PATH=../modules_out
+            all
+
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+            CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+            modules_install INSTALL_MOD_PATH=../modules_out
 
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
           echo "--- Post-Build File Timestamps: ---"
