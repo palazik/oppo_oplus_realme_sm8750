@@ -194,19 +194,23 @@ jobs:
           mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
           rm -rf common.zip &
 
-          # ИСПРАВЛЕНИЕ: Проверяем clang_version
+          # Checking clang_version
+          # Using Google's newest Clang (r584948)
           if [[ ${{ github.event.inputs.clang_version }} == "clang22" ]]; then
-            echo "Cloning Official LLVM-Clang 22.1.3..." &&
-            mkdir -p clang18 &&
-            aria2c -s16 -x16 -k1M https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.3/LLVM-22.1.3-Linux-X64.tar.xz -o clang.tar.xz &&
-            tar -xvf clang.tar.xz -C clang18 --strip-components=1 &&
-            rm -rf clang.tar.xz &
-            
-            # ИСПРАВЛЕНИЕ: Качаем нормальные build-tools
-            echo "Cloning build tools..." &&
-            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
-            unzip -q build-tools.zip &&
-            rm -rf build-tools.zip &
+            echo "Fetching Google Clang r584948 (LLVM 22-based)..."
+            mkdir -p clang18
+            # We use the GoogleSource +archive link you found
+            aria2c -s16 -x16 -k1M "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
+            tar -C clang18 -zxf clang.tar.gz
+            rm -rf clang.tar.gz &
+
+            # Match it with Official Google Build Tools for 6.6 GKI
+            echo "Fetching matching Google Build Tools..."
+            mkdir -p build-tools
+            curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
+            tar -C build-tools -zxf build-tools.tar.gz
+            rm -rf build-tools.tar.gz &
+          fi
 
           elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
             echo "Cloning LLVM-Clang18 toolchain..." &&
@@ -831,7 +835,7 @@ jobs:
           SU_C="common/kernel/sched/cpufreq_schedutil.c"
           if [ -f "$SU_C" ]; then
             # Меняем дефолтный rate limit с 1000us на 500us
-            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 500/' "$SU_C" 2>/dev/null || true
+            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 1000/' "$SU_C" 2>/dev/null || true
           fi
 
       - name: CPU Optimizations (Oryon SM8750)
@@ -845,7 +849,7 @@ jobs:
           CONFIG_ARCH_QCOM=y
           CONFIG_HZ_300=y
           CONFIG_PREEMPT=y
-          CONFIG_NO_HZ_FULL=y
+          CONFIG_NO_HZ_IDLE=y
           EOF
           # Добавляем -mcpu=oryon если поддерживается компилятором
           if ${{ github.event.inputs.clang_version == 'clang22' }} || \
@@ -912,9 +916,9 @@ jobs:
         working-directory: kernel_workspace/common
         run: |
           echo "Enabling LRNG (Linux Random Number Generator) v59..."
-          # LRNG патч от Epicmann24/SukiSU
-          git clone --depth=1 \
-            https://github.com/smuellerDD/lrng.git /tmp/lrng_src 2>/dev/null || true
+          # LRNG patch from Epicmann24/SukiSU
+          git clone --depth=1 https://github.com/smuellerDD/lrng.git /tmp/lrng_src
+          cp -r /tmp/lrng_src/drivers/char/lrng/* drivers/char/lrng/
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_LRNG=y
           CONFIG_LRNG_SHA256=y
