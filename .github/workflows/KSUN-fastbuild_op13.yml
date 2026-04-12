@@ -331,7 +331,7 @@ jobs:
           #   SUSFS=Off -> KernelSU-Next next
           KSU_BRANCH="next"
           KSU_FALLBACK=""
-          if [[ "${{ github.event.inputs.SUSFS }}" == "On" ]]; then
+          if [[ "${{ github.event.inputs.SUSFS }}" == "true" ]]; then
             KSU_BRANCH="dev-susfs"
             KSU_FALLBACK="next-susfs"
           fi
@@ -435,7 +435,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${{ github.event.inputs.SUSFS }}" != "On" ]]; then
+          if [[ "${{ github.event.inputs.SUSFS }}" != "true" ]]; then
             echo "SUSFS disabled → skipping."
             exit 0
           fi
@@ -630,7 +630,8 @@ jobs:
         if: inputs.SUSFS
         run: |
           cd kernel_workspace
-          if [ "${{ github.event.inputs.SUSFS }}" = "On" ]; then
+          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
+          if [ "${{ github.event.inputs.SUSFS }}" = "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
@@ -648,6 +649,8 @@ jobs:
       - name: Configure KSU & Misc
         run: |
           cd kernel_workspace
+          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -1097,15 +1100,6 @@ jobs:
           
       - name: Apply KPM to Kernel
         run: |
-          if [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' && ( "${{ github.event.inputs.ksu_type }}" == "sukisu" || "${{ github.event.inputs.ksu_type }}" == "resukisu" ) ]]; then
-            echo "Applying KPM and patching kernel..."
-            cd kernel_workspace/common/out/arch/arm64/boot
-            curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest/download/patch_linux
-            chmod +x patch_linux
-            ./patch_linux
-            rm -f Image
-            mv oImage Image
-          fi
           if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
             echo "Applying KP-N and patching kernel..."
             cd kernel_workspace/common/out/arch/arm64/boot
@@ -1115,6 +1109,8 @@ jobs:
             ./kptools-linux -p -i ./Image -k ./kpimg-linux -o ./oImage
             rm -f Image
             mv oImage Image
+          elif [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' ]]; then
+            echo "Built-in KPM is for SukiSU only. Skipping for KSU Next."
           fi
           
       - name: Clone AnyKernel3 and Package ZIP
@@ -1157,7 +1153,7 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
-          echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
+          echo "susfs: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
@@ -1185,11 +1181,12 @@ jobs:
           REPO="${{ github.repository }}"
           TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
 
-          KSU_TYPE="${{ github.event.inputs.ksu_type }}"
+          KSU_TYPE="KernelSU Next"
+          KSU_DISPLAY="KernelSU Next"
           KSUVER="${{ env.KSUVER }}"
           SUFFIX="${{ github.event.inputs.kernel_suffix }}"
           LTO="${{ github.event.inputs.lto_type }}"
-          SUSFS="${{ github.event.inputs.susfs_enable }}"
+          SUSFS="${{ github.event.inputs.SUSFS }}"
           KPM="${{ github.event.inputs.kpm_enable }}"
           BBR="${{ github.event.inputs.bbr_enable }}"
           ADIOS="${{ github.event.inputs.adios_enable }}"
@@ -1486,12 +1483,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 OPPO/Realme/OnePlus ${{ env.KSU_TYPENAME }} SM8750 Generic Kernel | Build Info
+          ### 📱 OnePlus 13 KernelSU Next SM8750 Generic Kernel | Build Info
           - **Kernel Version:** ${{ env.FULL_VERSION }}
           - **Build Time:** ${{ env.TIME_FORM }}
-          - **Device:** Snapdragon 8 Elite Generic ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Kernel (Based on OnePlus 13 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} Official OKI source)
-          - **KSU Branch:** ${{ env.KSU_TYPENAME }}
-          - **SuSFS Support:** ${{ github.event.inputs.susfs_enable }}
+          - **Device:** Snapdragon 8 Elite Generic ${{ github.event.inputs.kernel_version }} Kernel (Based on OnePlus 13 ${{ github.event.inputs.kernel_version }} Official OKI source)
+          - **KSU Branch:** KernelSU Next
+          - **SuSFS Support:** ${{ github.event.inputs.SUSFS }}
           - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
           - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
           - **LZ4KD Support:** ${{ github.event.inputs.lz4kd_enable }}
