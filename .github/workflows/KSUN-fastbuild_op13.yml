@@ -617,6 +617,16 @@ jobs:
           cp -f "$SUSFS_FOLDER/kernel_patches/fs/susfs.c" fs/susfs.c
           cp -f "$SUSFS_FOLDER/kernel_patches/include/linux/susfs.h" include/linux/susfs.h
           cp -f "$SUSFS_FOLDER/kernel_patches/include/linux/susfs_def.h" include/linux/susfs_def.h
+
+          echo "✅ Resolving KSU-Next vs SuSFS naming conflict..."
+          # 1. Меняем имя переменной в susfs.c, чтобы компилятор не ругался на "redefinition"
+          sed -i 's/is_susfs_uname_set/susfs_uname_spoofed_var/g' fs/susfs.c
+            
+          # 2. Добавляем функции-мосты для линковщика KSU-Next
+          echo "" >> fs/susfs.c
+          sed -i '$a bool is_susfs_uname_set(void) { return susfs_uname_spoofed_var; }' fs/susfs.c
+          sed -i '$a bool susfs_uname_is_active(void) { return susfs_uname_spoofed_var; }' fs/susfs.c
+          sed -i '$a void susfs_set_uname_from_kernel(void) {}' fs/susfs.c
             
             # Проверка, что записалось (увидишь в логах билда)
             tail -n 5 fs/susfs.c
