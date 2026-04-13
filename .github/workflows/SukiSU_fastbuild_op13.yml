@@ -393,7 +393,7 @@ jobs:
           fi
 
 
-          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace"
 
           # Auto-detect kernel source root (some manifests use common/, some use common/common/)
           CANDIDATES=(
@@ -422,7 +422,7 @@ jobs:
                     echo "✅ Kernel root detected: $KERNEL_DIR"
           # susfs4oki patches sometimes are generated relative to kernel_platform root (paths start with common/)
           # so we dynamically choose where to apply the patch from.
-          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace"
           SRC_REL="$(realpath --relative-to="$KERNEL_PLATFORM" "$KERNEL_DIR" 2>/dev/null || echo "common")"
           echo "Kernel source relpath: $SRC_REL"
 
@@ -594,7 +594,7 @@ jobs:
           set -euo pipefail
           die() { echo "::error::$*"; exit 1; }
 
-          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          KERNEL_PLATFORM="$GITHUB_WORKSPACE/kernel_workspace"
 
           # Auto-detect actual kernel source root (many trees build from common/, not kernel_platform/).
           CANDIDATES=(
@@ -765,7 +765,7 @@ jobs:
             exit 0
           fi
 
-          KDIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/common"
+          KDIR="$GITHUB_WORKSPACE/kernel_workspace/common"
 
           # After SukiSU setup.sh, drivers/kernelsu is a symlink into $KDIR/KernelSU/kernel
           KSU_KCONFIG="$KDIR/drivers/kernelsu/Kconfig"
