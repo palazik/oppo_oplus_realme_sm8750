@@ -25,6 +25,12 @@ on:
         required: true
         type: boolean
         default: true
+      susfs_mode:
+        description: "SUSFS source (recommended: sukisu; external applies susfs4oki patch)"
+        type: choice
+        required: true
+        default: external
+        options: [sukisu, external]
       kpm_enable:
         description: 'Enable KPM (builtin for (re)sukisu, kpn for independent KPM)'
         required: true
@@ -81,11 +87,6 @@ on:
         required: true
         type: boolean
         default: false
-      kernel_suffix:
-        description: 'Kernel Suffix (leave empty for default, no spaces/special chars)'
-        required: false
-        type: string
-        default: 'next-palaziks'
       lto_type:
         description: 'LTO Optimization (none = fast compile, thin = default, full = slow)'
         required: true
@@ -375,72 +376,6 @@ jobs:
             echo "Already patched"
           fi
 
-      - name: Apply Multi-Manager
-        if: inputs.multi_manager
-        run: |
-          echo "📦 Enabling Multi-Manager support..."
-          
-          # 1. Ищем папку KernelSU-Next
-          if [ -d "$GITHUB_WORKSPACE/kernel_workspace/KernelSU-Next" ]; then
-            cd "$GITHUB_WORKSPACE/kernel_workspace/KernelSU-Next"
-          elif [ -d "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU-Next" ]; then
-            cd "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU-Next"
-          else
-            echo "❌ Error: KernelSU-Next directory not found!"
-            exit 1
-          fi
-          
-          # 2. Ищем файл apk_sign.c
-          APK_SIGN_PATH=$(find . -name "apk_sign.c" | head -n 1)
-          if [ -z "$APK_SIGN_PATH" ]; then
-            echo "❌ Error: apk_sign.c not found anywhere in KSU-Next!"
-            exit 1
-          fi
-          
-          echo "✅ Found apk_sign.c at: $APK_SIGN_PATH"
-          
-          # 3. Терминаторский патч (читает весь файл целиком)
-          python3 - "$APK_SIGN_PATH" << 'PYEOF'
-          import sys, re
-          path = sys.argv[1]
-          
-          with open(path, 'r') as f:
-              src = f.read()
-              
-          if "weishu KernelSU" in src:
-              print("✅ Already patched!")
-              sys.exit(0)
-              
-          # Ищем ТОЧНОЕ совпадение имени функции, открывающую скобку, слово path,
-          # запятую, любой текст, запятую, любой текст, закрывающую скобку.
-          # Флаг re.DOTALL позволяет точке совпасть даже с переносом строки (\n)
-          pattern = re.compile(r'(check_v2_signature\s*\(\s*path\s*,.*?\))', re.DOTALL)
-          
-          addition = '''
-                  || check_v2_signature(path, 0x33b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6") /* weishu KernelSU */
-                  || check_v2_signature(path, 0x384, "7e0c6d7278a3bb8e364e0fcba95afaf3666cf5ff3c245a3b63c8833bd0445cc4") /* 5ec1cff KernelSU */
-                  || check_v2_signature(path, 0x35c, "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef") /* rsuntk KernelSU */
-                  || check_v2_signature(path, 0x29c, "946b0557e450a6430a0ba6b6bccee5bc12953ec8735d55e26139b0ec12303b21") /* SukiSU Ultra */
-                  || check_v2_signature(path, 0x375, "484fcba6e6c43b1fb09700633bf2fb4758f13cb0b2f4457b80d075084b26c588") /* kowsu */
-                  || check_v2_signature(path, 0x384, "a9462b8b98ea1ca7901b0cbdcebfaa35f0aa95e51b01d66e6b6d2c81b97746d8") /* MamboSU */
-                  || check_v2_signature(path, 0x377, "d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64") /* ReSukiSU */
-                  || check_v2_signature(path, 0x39b, "593d4ce870c02468639efeef631e07ca4d852d63f154be56706229f9a5be0800") /* WildKSU */'''
-          
-          # Заменяем только ПОСЛЕДНЕЕ вхождение этой функции (там где return)
-          matches = list(pattern.finditer(src))
-          if not matches:
-              print("❌ Error: check_v2_signature not found in code!")
-              sys.exit(1)
-              
-          last_match = matches[-1]
-          new_src = src[:last_match.start()] + f"({last_match.group(1)}{addition})" + src[last_match.end():]
-          
-          with open(path, 'w') as f:
-              f.write(new_src)
-              
-          print("✅ Python multiline regex patch applied successfully!")
-          PYEOF
-
       - name: "Apply SUSFS"
         shell: bash
         run: |
@@ -448,7 +383,7 @@ jobs:
           SUSFS_MODE="${{ inputs.susfs_mode }}"
           set -euo pipefail
 
-          if [[ "${{ github.event.inputs.SUSFS }}" != "On" ]]; then
+          if [[ "${{ github.event.inputs.SUSFS }}" != "true" ]]; then
             echo "SUSFS disabled → skipping."
             exit 0
           fi
@@ -585,7 +520,7 @@ jobs:
           echo "::endgroup::"
 
           # Hard check: SukiSU SUSFS_INLINE_HOOK needs <linux/susfs.h> present in the kernel tree
-          if [[ "$SUSFS_IN" == "On" ]]; then
+          if [[ "$SUSFS_IN" == "true" ]]; then
             if [[ -f "$KERNEL_DIR/include/linux/susfs.h" ]]; then
               echo "✅ Found header: $KERNEL_DIR/include/linux/susfs.h"
             else
@@ -709,7 +644,7 @@ jobs:
           (curl -fLSs "$SETUP_URL_PRIMARY" | bash -s "$SETUP_ARG") || (curl -fLSs "$SETUP_URL_FALLBACK" | bash -s "$SETUP_ARG")
           # Detect whether this kernel tree actually contains SUSFS config symbols after SukiSU setup.
           # If not, we'll allow the external SUSFS patch step to run (avoids false "susfs-main" assumption).
-          if [[ "$SUSFS_IN" == "On" ]]; then
+          if [[ "$SUSFS_IN" == "true" ]]; then
             if grep -Rqs "KSU_SUSFS" ./drivers ./fs ./include 2>/dev/null; then
               echo "✅ Detected KSU_SUSFS symbols in kernel tree."
               echo "SUKISU_HAS_SUSFS=1" >> "$GITHUB_ENV"
@@ -821,12 +756,13 @@ jobs:
             echo "drivers/kernelsu/supercalls.[ch] not found; skipping repair."
           fi
           echo "::endgroup::"
+
       - name: "SukiSU SUSFS kernel-r25 compat (TRY_UMOUNT)"
         shell: bash
         run: |
           set -euo pipefail
 
-          if [[ "${{ github.event.inputs.SUSFS }}" != "On" ]]; then
+          if [[ "${{ github.event.inputs.SUSFS }}" != "true" ]]; then
             echo "SUSFS Off → skipping SUSFS r25 compat patch."
             exit 0
           fi
@@ -911,6 +847,72 @@ jobs:
           fi
 
           echo "✅ SukiSU SUSFS r25 compat patch applied."
+
+      - name: Apply Multi-Manager
+        if: inputs.multi_manager
+        run: |
+          echo "📦 Enabling Multi-Manager support..."
+          
+          # 1. Ищем папку KernelSU-Next
+          if [ -d "$GITHUB_WORKSPACE/kernel_workspace/KernelSU" ]; then
+            cd "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
+          elif [ -d "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU" ]; then
+            cd "$GITHUB_WORKSPACE/kernel_workspace/common/KernelSU"
+          else
+            echo "❌ Error: KernelSU directory not found!"
+            exit 1
+          fi
+          
+          # 2. Ищем файл apk_sign.c
+          APK_SIGN_PATH=$(find . -name "apk_sign.c" | head -n 1)
+          if [ -z "$APK_SIGN_PATH" ]; then
+            echo "❌ Error: apk_sign.c not found anywhere in KSU-Next!"
+            exit 1
+          fi
+          
+          echo "✅ Found apk_sign.c at: $APK_SIGN_PATH"
+          
+          # 3. Терминаторский патч (читает весь файл целиком)
+          python3 - "$APK_SIGN_PATH" << 'PYEOF'
+          import sys, re
+          path = sys.argv[1]
+          
+          with open(path, 'r') as f:
+              src = f.read()
+              
+          if "weishu KernelSU" in src:
+              print("✅ Already patched!")
+              sys.exit(0)
+              
+          # Ищем ТОЧНОЕ совпадение имени функции, открывающую скобку, слово path,
+          # запятую, любой текст, запятую, любой текст, закрывающую скобку.
+          # Флаг re.DOTALL позволяет точке совпасть даже с переносом строки (\n)
+          pattern = re.compile(r'(check_v2_signature\s*\(\s*path\s*,.*?\))', re.DOTALL)
+          
+          addition = '''
+                  || check_v2_signature(path, 0x33b, "c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6") /* weishu KernelSU */
+                  || check_v2_signature(path, 0x384, "7e0c6d7278a3bb8e364e0fcba95afaf3666cf5ff3c245a3b63c8833bd0445cc4") /* 5ec1cff KernelSU */
+                  || check_v2_signature(path, 0x35c, "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef") /* rsuntk KernelSU */
+                  || check_v2_signature(path, 0x29c, "946b0557e450a6430a0ba6b6bccee5bc12953ec8735d55e26139b0ec12303b21") /* SukiSU Ultra */
+                  || check_v2_signature(path, 0x375, "484fcba6e6c43b1fb09700633bf2fb4758f13cb0b2f4457b80d075084b26c588") /* kowsu */
+                  || check_v2_signature(path, 0x384, "a9462b8b98ea1ca7901b0cbdcebfaa35f0aa95e51b01d66e6b6d2c81b97746d8") /* MamboSU */
+                  || check_v2_signature(path, 0x377, "d3469712b6214462764a1d8d3e5cbe1d6819a0b629791b9f4101867821f1df64") /* ReSukiSU */
+                  || check_v2_signature(path, 0x39b, "593d4ce870c02468639efeef631e07ca4d852d63f154be56706229f9a5be0800") /* WildKSU */'''
+          
+          # Заменяем только ПОСЛЕДНЕЕ вхождение этой функции (там где return)
+          matches = list(pattern.finditer(src))
+          if not matches:
+              print("❌ Error: check_v2_signature not found in code!")
+              sys.exit(1)
+              
+          last_match = matches[-1]
+          new_src = src[:last_match.start()] + f"({last_match.group(1)}{addition})" + src[last_match.end():]
+          
+          with open(path, 'w') as f:
+              f.write(new_src)
+              
+          print("✅ Python multiline regex patch applied successfully!")
+          PYEOF
           
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         if: inputs.lz4_enable
@@ -1224,9 +1226,7 @@ jobs:
           
           # If you type a suffix (like 'palaziks'), this cleanly swaps the generic '-4k' 
           # at the end of the Android 15 string with your suffix, keeping the letters!
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            sudo sed -i "s/-4k/-${{ github.event.inputs.kernel_suffix }}/g" ./common/arch/arm64/configs/gki_defconfig
-          fi
+          sudo sed -i "s/-4k/-palaziks-ShiftPorts/g" ./common/arch/arm64/configs/gki_defconfig
           
           # Clean up Git hashes so no dirty '+' sign gets added
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
@@ -1445,13 +1445,10 @@ jobs:
           if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
             wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip || true
           fi
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_${{ github.event.inputs.kernel_suffix }}.zip
-            FULL_VERSION=${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.kernel_suffix }}
-          else
+            AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_palaziks.zip
+            FULL_VERSION=${{ github.event.inputs.kernel_version }}-palaziks
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_${{ env.KERNEL_NAME }}.zip
             FULL_VERSION=${{ github.event.inputs.kernel_version }}-${{ env.KERNEL_NAME }}
-          fi
           
           zip -r ../$AK3_NAME ./*
           echo "ak3name=$AK3_NAME" >> $GITHUB_OUTPUT
@@ -1494,10 +1491,10 @@ jobs:
           REPO="${{ github.repository }}"
           TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
 
-          KSU_TYPE="KernelSU Next"
-          KSU_DISPLAY="KernelSU Next"
+          KSU_TYPE="SukiSU Ultra"
+          KSU_DISPLAY="SukiSU Ultra"
           KSUVER="${{ env.KSUVER }}"
-          SUFFIX="${{ github.event.inputs.kernel_suffix }}"
+          SUFFIX="-palaziks-ShiftPorts"
           LTO="${{ github.event.inputs.lto_type }}"
           SUSFS="${{ github.event.inputs.SUSFS }}"
           KPM="${{ github.event.inputs.kpm_enable }}"
@@ -1754,11 +1751,7 @@ jobs:
 
       - name: Set Environment Variables
         run: |
-          if [[ -n "${{ github.event.inputs.kernel_suffix }}" ]]; then
-            FULL_VERSION=${{ github.event.inputs.kernel_version }}-${{ github.event.inputs.kernel_suffix }}
-          else
-            FULL_VERSION=${{ github.event.inputs.kernel_version }}-${{ env.KERNEL_NAME }}
-          fi
+          FULL_VERSION=${{ github.event.inputs.kernel_version }}-palaziks-ShiftPorts
           echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
           export FULL_VERSION=$FULL_VERSION
           TIME="$(TZ='Asia/Shanghai' date +'%y%m%d%H%M%S')"
@@ -1767,7 +1760,7 @@ jobs:
           echo "TIME_FORM=$TIME_FORM" >> $GITHUB_ENV
           TAG_HEAD="OPPO-OPlus-Realme-build"
           echo "TAG_HEAD=$TAG_HEAD" >> $GITHUB_ENV
-          KSU_TYPENAME="KernelSU Next"
+          KSU_TYPENAME="SukiSU Ultra"
           echo "KSU_TYPENAME=$KSU_TYPENAME" >> $GITHUB_ENV
           
       - name: Create Release
@@ -1776,11 +1769,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 OnePlus 13 KernelSU Next SM8750 Generic Kernel | Build Info
+          ### 📱 OnePlus 13 SukiSU Ultra SM8750 Generic Kernel | Build Info
           - **Kernel Version:** ${{ env.FULL_VERSION }}
           - **Build Time:** ${{ env.TIME_FORM }}
           - **Device:** Snapdragon 8 Elite Generic ${{ github.event.inputs.kernel_version }} Kernel (Based on OnePlus 13 ${{ github.event.inputs.kernel_version }} Official OKI source)
-          - **KSU Branch:** KernelSU Next
+          - **KSU Branch:** SukiSU Ultra
           - **SuSFS Support:** ${{ github.event.inputs.SUSFS }}
           - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
           - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
