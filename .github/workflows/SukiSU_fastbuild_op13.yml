@@ -44,8 +44,10 @@ on:
         description: 'Choose clang version for building kernel'
         required: true
         type: choice
-        default: 'clang20'
+        default: 'neutron'
         options:
+          - 'neutron'
+          - 'aosp_clang'
           - 'clang20'
           - 'clang18'
       lz4_enable:
@@ -220,6 +222,25 @@ jobs:
             curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/build-tools.zip" -o build-tools.zip &&
             unzip -q build-tools &&
             rm -rf build-tools.zip &
+
+          elif [[ ${{ github.event.inputs.clang_version }} == "neutron" ]]; then
+            echo "Fetching Neutron Clang..."
+            # Neutron comes with its own LLD and tools, no need for separate build-tools
+            git clone --depth=1 https://github.com/Neutron-Toolchains/antman.git antman
+            bash antman -S
+
+          elif [[ ${{ github.event.inputs.clang_version }} == "aosp_clang" ]]; then
+            echo "Fetching Google AOSP Clang r584948 (LLVM 22-based)..."
+            mkdir -p clang-aosp
+            aria2c -s16 -x16 -k1M "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
+            tar -C clang-aosp -zxf clang.tar.gz
+            rm -rf clang.tar.gz &
+
+            echo "Fetching Official Google Build Tools..."
+            mkdir -p build-tools
+            curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
+            tar -C build-tools -zxf build-tools.tar.gz
+            rm -rf build-tools.tar.gz &
 
           elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
             echo "Cloning LLVM-Clang18 toolchain..." &&
@@ -930,12 +951,16 @@ jobs:
       - name: Prepare CPU Optimizations (Oryon SM8750)
         if: inputs.cpu_opt
         run: |
-          echo "Setting up Oryon-1 MCPU tuning..."
-          # 1. Готовим флаги для компилятора
-          # Мы используем -mcpu=oryon-1, так как это стандарт для первого поколения Oryon
-          echo "EXTRA_CFLAGS=-mcpu=oryon-1" >> $GITHUB_ENV
+          echo "Setting up CPU tuning..."
           
-          # 2. Добавляем важные конфиги в defconfig
+          if [[ "${{ github.event.inputs.clang_version }}" == "clang18" ]]; then
+            echo "Clang 18 detected: Using generic armv9-a (oryon-1 not supported)."
+            echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod" >> $GITHUB_ENV
+          else
+            echo "Modern Clang detected: Using oryon-1 with stability mitigations."
+            echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
+          fi
+          
           cd kernel_workspace/common
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ARM64_ERRATUM_2658417=y
@@ -1192,9 +1217,17 @@ jobs:
           WORKDIR="$(pwd)"
           export MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
           export PATH="/usr/lib/ccache:$PATH"
-          export PATH="$WORKDIR/kernel_workspace/clang18/bin:$PATH"
-          export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
-          CLANG_DIR="$WORKDIR/kernel_workspace/clang18/bin"
+          # Dynamic Pathing based on Toolchain selection
+          if [[ "${{ github.event.inputs.clang_version }}" == "aosp_clang" ]]; then
+            export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+            CLANG_DIR="$WORKDIR/kernel_workspace/clang-aosp/bin"
+          elif [[ "${{ github.event.inputs.clang_version }}" == "neutron" ]]; then
+            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$PATH"
+            CLANG_DIR="$WORKDIR/kernel_workspace/neutron-clang/bin"
+          else
+            export PATH="$WORKDIR/kernel_workspace/clang18/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+            CLANG_DIR="$WORKDIR/kernel_workspace/clang18/bin"
+          fi
           CLANG_VERSION="$($CLANG_DIR/clang --version | head -n 1)"
           LLD_VERSION="$($CLANG_DIR/ld.lld --version | head -n 1)"
           echo "Compiler Info:"
