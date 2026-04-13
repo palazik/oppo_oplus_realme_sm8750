@@ -612,12 +612,11 @@ jobs:
 
           echo "::group::SUSFS ↔ KernelSU compat (bridge)"
           if [ -f "fs/susfs.c" ]; then
-            echo "✅ Applying bridge to fs/susfs.c..."
-            # Добавляем пустую строку для безопасности и сами функции
-            echo "" >> fs/susfs.c
-            sed -i '$a bool is_susfs_uname_set(void) { return true; }' fs/susfs.c
-            sed -i '$a bool susfs_uname_is_active(void) { return true; }' fs/susfs.c
-            sed -i '$a void susfs_set_uname_from_kernel(void) {}' fs/susfs.c
+            echo "Overwriting SuSFS source files..."
+          mkdir -p fs include/linux
+          cp -f "$SUSFS_FOLDER/kernel_patches/fs/susfs.c" fs/susfs.c
+          cp -f "$SUSFS_FOLDER/kernel_patches/include/linux/susfs.h" include/linux/susfs.h
+          cp -f "$SUSFS_FOLDER/kernel_patches/include/linux/susfs_def.h" include/linux/susfs_def.h
             
             # Проверка, что записалось (увидишь в логах билда)
             tail -n 5 fs/susfs.c
