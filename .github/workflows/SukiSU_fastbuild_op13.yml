@@ -44,9 +44,9 @@ on:
         description: 'Choose clang version for building kernel'
         required: true
         type: choice
-        default: 'clang19'
+        default: 'clang20'
         options:
-          - 'clang19'
+          - 'clang20'
           - 'clang18'
       lz4_enable:
         description: 'Install LZ4 1.10.0 + ZSTD 1.5.7 Patch'
@@ -208,16 +208,16 @@ jobs:
 
           # Checking clang_version
           # Using Google's newest Clang (r584948)
-          if [[ ${{ github.event.inputs.clang_version }} == "clang19" ]]; then
-            echo "Fetching Clang 19..."
+          if [[ ${{ github.event.inputs.clang_version }} == "clang20" ]]; then
+            echo "Fetching Clang 20..."
             mkdir -p clang18 &&
-            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip" -o clang.zip &&
+            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/clang-r547379.zip" -o clang.zip &&
             unzip -q clang.zip -d clang18 &&
             rm -rf clang.zip &
 
             # Match it with Official Google Build Tools for 6.6 GKI
             echo "Fetching matching Google Build Tools..." &&
-            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip" -o build-tools.zip &&
+            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/build-tools.zip" -o build-tools.zip &&
             unzip -q build-tools &&
             rm -rf build-tools.zip &
 
