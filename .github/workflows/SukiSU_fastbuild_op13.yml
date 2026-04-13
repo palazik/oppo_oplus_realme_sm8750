@@ -228,7 +228,7 @@ jobs:
             echo "Fetching ZyCromerZ Clang 19 (Oryon Supported)..."
             mkdir -p zyc-clang
             aria2c -s16 -x16 -k1M "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz" -o zyc-clang.tar.gz
-            tar -C zyc-clang -zxf zyc-clang.tar.gz
+            tar --strip-components=1 -C zyc-clang -zxf zyc-clang.tar.gz
             rm -rf zyc-clang.tar.gz &
 
             echo "Fetching CodeLinaro/Qualcomm Build Tools (For perfect BTF compat)..."
@@ -1244,10 +1244,12 @@ jobs:
             export PATH="$WORKDIR/kernel_workspace/zyc-clang/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/zyc-clang/bin"
           elif [[ "${{ github.event.inputs.clang_version }}" == "aosp_clang" ]]; then
-            export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
+            # FIX: Removed linux-x86/ since tar.gz extracts directly to bin/
+            export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/clang-aosp/bin"
           elif [[ "${{ github.event.inputs.clang_version }}" == "neutron" ]]; then
-            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
+            # FIX: Removed linux-x86/ since tar.gz extracts directly to bin/
+            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/neutron-clang/bin"
           else
             export PATH="$WORKDIR/kernel_workspace/clang18/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
