@@ -1189,6 +1189,7 @@ jobs:
       - name: Build Kernel
         run: |
           WORKDIR="$(pwd)"
+          export MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
           export PATH="/usr/lib/ccache:$PATH"
           export PATH="$WORKDIR/kernel_workspace/clang18/bin:$PATH"
           export PATH="$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
@@ -1268,7 +1269,7 @@ jobs:
 
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
-            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option ${EXTRA_CFLAGS:-}" \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option ${EXTRA_CFLAGS:-} ${MAP}" \
             Image
 
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
