@@ -215,15 +215,13 @@ jobs:
           # Using Google's newest Clang (r584948)
           if [[ ${{ github.event.inputs.clang_version }} == "clang19" ]]; then
             echo "Fetching Clang 19..."
-            mkdir -p clang18
-            # We use the GoogleSource +archive link you found
-            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip"" -o clang.zip &&
+            mkdir -p clang18 &&
+            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip" -o clang.zip &&
             unzip -q clang.zip -d clang18 &&
             rm -rf clang.zip &
 
             # Match it with Official Google Build Tools for 6.6 GKI
-            echo "Fetching matching Google Build Tools..."
-            mkdir -p build-tools
+            echo "Fetching matching Google Build Tools..." &&
             curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip" -o build-tools.zip &&
             unzip -q build-tools &&
             rm -rf build-tools.zip &
