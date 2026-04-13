@@ -774,12 +774,16 @@ jobs:
             sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 1000/' "$SU_C" 2>/dev/null || true
           fi
 
-      - name: CPU Optimizations (Oryon SM8750)
+      - name: Prepare CPU Optimizations (Oryon SM8750)
         if: inputs.cpu_opt
-        working-directory: kernel_workspace/common
         run: |
-          echo "Applying Oryon CPU optimizations for SM8750..."
-          # Oryon MCPU tuning — специфично для Snapdragon 8 Elite
+          echo "Setting up Oryon-1 MCPU tuning..."
+          # 1. Готовим флаги для компилятора
+          # Мы используем -mcpu=oryon-1, так как это стандарт для первого поколения Oryon
+          echo "EXTRA_CFLAGS=-mcpu=oryon-1" >> $GITHUB_ENV
+          
+          # 2. Добавляем важные конфиги в defconfig
+          cd kernel_workspace/common
           cat >> arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ARM64_ERRATUM_2658417=y
           CONFIG_ARCH_QCOM=y
@@ -787,16 +791,7 @@ jobs:
           CONFIG_PREEMPT=y
           CONFIG_NO_HZ_IDLE=y
           EOF
-          
-          # Добавляем -mcpu=oryon если поддерживается компилятором
-          if [ "${{ github.event.inputs.clang_version }}" = "clang22" ]; then
-            echo "Adding Oryon MCPU flag for clang22..."
-            ARCH_MK="arch/arm64/Makefile"
-            if [ -f "$ARCH_MK" ] && ! grep -q "mcpu=oryon" "$ARCH_MK"; then
-              # SAFE APPEND: Adds the flags to the very bottom of the file
-              echo -e "\nKBUILD_CFLAGS += -mcpu=oryon\nKBUILD_AFLAGS += -mcpu=oryon" >> "$ARCH_MK"
-            fi
-          fi
+          echo "✅ Oryon flags prepared."
 
       - name: F2FS Optimizations
         if: inputs.f2fs_opt
@@ -1123,7 +1118,7 @@ jobs:
 
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
-            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
+            KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option ${EXTRA_CFLAGS:-}" \
             Image
 
           echo "--- Post-Build Time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
