@@ -44,8 +44,9 @@ on:
         description: 'Choose clang version for building kernel'
         required: true
         type: choice
-        default: 'neutron'
+        default: 'zyc_clang'
         options:
+          - 'zyc_clang'
           - 'neutron'
           - 'aosp_clang'
           - 'clang20'
@@ -222,6 +223,17 @@ jobs:
             curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/build-tools.zip" -o build-tools.zip &&
             unzip -q build-tools &&
             rm -rf build-tools.zip &
+
+          elif [[ ${{ github.event.inputs.clang_version }} == "zyc_clang" ]]; then
+            echo "Fetching ZyCromerZ Clang 19 (Oryon Supported)..."
+            mkdir -p zyc-clang
+            aria2c -s16 -x16 -k1M "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz" -o zyc-clang.tar.gz
+            tar -C zyc-clang -zxf zyc-clang.tar.gz
+            rm -rf zyc-clang.tar.gz &
+
+            echo "Fetching CodeLinaro/Qualcomm Build Tools (For perfect BTF compat)..."
+            # Pulling the exact branch from the OP13 XML manifest
+            git clone --depth=1 -b ks-kernel.lnx.4.0.r1-rel https://git.codelinaro.org/clo/la/kernel/prebuilts/build-tools.git build-tools &
 
           elif [[ ${{ github.event.inputs.clang_version }} == "neutron" ]]; then
             echo "Fetching Neutron Clang..."
@@ -967,7 +979,7 @@ jobs:
             echo "Clang 18 detected: Using generic armv9-a (oryon-1 not supported)."
             echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod" >> $GITHUB_ENV
           else
-            echo "Modern Clang detected: Using oryon-1 with stability mitigations."
+            echo "Modern/ZyC Clang detected: Using oryon-1 with stability mitigations."
             echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
           fi
           
@@ -1228,11 +1240,14 @@ jobs:
           export MAP="-fdebug-prefix-map=${GITHUB_WORKSPACE}=. -fmacro-prefix-map=${GITHUB_WORKSPACE}=. -ffile-prefix-map=${GITHUB_WORKSPACE}=."
           export PATH="/usr/lib/ccache:$PATH"
           # Dynamic Pathing based on Toolchain selection
-          if [[ "${{ github.event.inputs.clang_version }}" == "aosp_clang" ]]; then
-            export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+          if [[ "${{ github.event.inputs.clang_version }}" == "zyc_clang" ]]; then
+            export PATH="$WORKDIR/kernel_workspace/zyc-clang/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
+            CLANG_DIR="$WORKDIR/kernel_workspace/zyc-clang/bin"
+          elif [[ "${{ github.event.inputs.clang_version }}" == "aosp_clang" ]]; then
+            export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/clang-aosp/bin"
           elif [[ "${{ github.event.inputs.clang_version }}" == "neutron" ]]; then
-            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/linux-x86/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/neutron-clang/bin"
           else
             export PATH="$WORKDIR/kernel_workspace/clang18/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
