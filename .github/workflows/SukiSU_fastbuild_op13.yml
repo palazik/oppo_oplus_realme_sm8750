@@ -225,10 +225,15 @@ jobs:
 
           elif [[ ${{ github.event.inputs.clang_version }} == "neutron" ]]; then
             echo "Fetching Neutron Clang..."
-            git clone --depth=1 https://github.com/Neutron-Toolchains/antman.git antman
-            cd antman && ./antman -S && cd ..
+            # Create a dedicated folder and run antman inside it
+            mkdir -p neutron-clang
+            curl -sSL "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" -o neutron-clang/antman
+            cd neutron-clang
+            bash antman -S
+            cd ..
 
-            echo "Fetching Official Google Build Tools (Required for pahole & dtc)..."
+            # We still need Google's build-tools for 'dtc' and 'pahole'
+            echo "Fetching Official Google Build Tools..."
             mkdir -p build-tools
             curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
             tar -C build-tools -zxf build-tools.tar.gz
@@ -1227,8 +1232,8 @@ jobs:
             export PATH="$WORKDIR/kernel_workspace/clang-aosp/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/clang-aosp/bin"
           elif [[ "${{ github.event.inputs.clang_version }}" == "neutron" ]]; then
-            export PATH="$WORKDIR/kernel_workspace/antman/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
-            CLANG_DIR="$WORKDIR/kernel_workspace/antman/neutron-clang/bin"
+            export PATH="$WORKDIR/kernel_workspace/neutron-clang/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
+            CLANG_DIR="$WORKDIR/kernel_workspace/neutron-clang/bin"
           else
             export PATH="$WORKDIR/kernel_workspace/clang18/bin:$WORKDIR/kernel_workspace/build-tools/bin:$PATH"
             CLANG_DIR="$WORKDIR/kernel_workspace/clang18/bin"
