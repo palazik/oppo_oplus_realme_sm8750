@@ -530,6 +530,53 @@ jobs:
 
           echo "✅ SUSFS patching complete."
 
+      - name: Configure SuSFS
+        if: inputs.SUSFS
+        run: |
+          cd kernel_workspace
+          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
+          if [ "${{ github.event.inputs.SUSFS }}" = "true" ]; then
+            echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$DEFCONFIG"
+          else
+            echo "CONFIG_KSU_SUSFS=n" >> "$DEFCONFIG"
+          fi
+
+      - name: Configure KSU & Misc
+        run: |
+          cd kernel_workspace
+          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
+            echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # Support Mountify-style tmpfs xattrs (as in your base workflow)
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+          # Kprobes
+          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
+          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
+          echo "CONFIG_DYNAMIC_FTRACE=y" >> "$DEFCONFIG"
+
       - name: "Integrate SukiSU Ultra (builtin, official setup.sh)"
         shell: bash
         run: |
@@ -817,52 +864,6 @@ jobs:
           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
           cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || true
-          
-      - name: Configure SuSFS
-        if: inputs.SUSFS
-        run: |
-          cd kernel_workspace
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-          if [ "${{ github.event.inputs.SUSFS }}" = "true" ]; then
-            echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$DEFCONFIG"
-          else
-            echo "CONFIG_KSU_SUSFS=n" >> "$DEFCONFIG"
-          fi
-          
-      - name: Configure KSU & Misc
-        run: |
-          cd kernel_workspace
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
-            echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/check_defconfig//' ./common/build.config.gki
-          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
-          # Support Mountify-style tmpfs xattrs (as in your base workflow)
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          # Kprobes
-          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
-          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
 
       - name: Configure HMBIRD SCX Scheduler
         if: inputs.hmbird_enable
@@ -1262,12 +1263,12 @@ jobs:
           KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
           gki_defconfig && \
           
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out \
             KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
             gki_defconfig
-
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
+          
+          make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out \
             KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option ${EXTRA_CFLAGS:-} ${MAP}" \
             Image
