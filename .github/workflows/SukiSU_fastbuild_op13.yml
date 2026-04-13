@@ -227,7 +227,7 @@ jobs:
             echo "Fetching Neutron Clang..."
             # Neutron comes with its own LLD and tools, no need for separate build-tools
             git clone --depth=1 https://github.com/Neutron-Toolchains/antman.git antman
-            bash antman -S
+            ./antman/antman -S
 
           elif [[ ${{ github.event.inputs.clang_version }} == "aosp_clang" ]]; then
             echo "Fetching Google AOSP Clang r584948 (LLVM 22-based)..."
