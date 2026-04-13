@@ -38,9 +38,9 @@ on:
         description: 'Choose clang version for building kernel'
         required: true
         type: choice
-        default: 'clang18'
+        default: 'clang19'
         options:
-          - 'clang22'
+          - 'clang19'
           - 'clang18'
       lz4_enable:
         description: 'Install LZ4 1.10.0 + ZSTD 1.5.7 Patch'
@@ -212,20 +212,20 @@ jobs:
 
           # Checking clang_version
           # Using Google's newest Clang (r584948)
-          if [[ ${{ github.event.inputs.clang_version }} == "clang22" ]]; then
-            echo "Fetching Google Clang r584948 (LLVM 22-based)..."
+          if [[ ${{ github.event.inputs.clang_version }} == "clang19" ]]; then
+            echo "Fetching Clang 19..."
             mkdir -p clang18
             # We use the GoogleSource +archive link you found
-            curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
-            tar -C clang18 -zxf clang.tar.gz
-            rm -rf clang.tar.gz &
+            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip"" -o clang.zip &&
+            unzip -q clang.zip -d clang18 &&
+            rm -rf clang.zip &
 
             # Match it with Official Google Build Tools for 6.6 GKI
             echo "Fetching matching Google Build Tools..."
             mkdir -p build-tools
-            curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
-            tar -C build-tools -zxf build-tools.tar.gz
-            rm -rf build-tools.tar.gz &
+            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip" -o build-tools.zip &&
+            unzip -q build-tools &&
+            rm -rf build-tools.zip &
 
           elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
             echo "Cloning LLVM-Clang18 toolchain..." &&
