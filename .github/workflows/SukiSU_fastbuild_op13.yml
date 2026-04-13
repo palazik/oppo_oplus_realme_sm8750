@@ -318,57 +318,6 @@ jobs:
             ccache -sv
           fi
 
-      - name: Fix ksu selinux linker errors
-        working-directory: kernel_workspace/common
-        run: |
-          # Ищем rules.c в двух возможных местах
-          RULES_C=""
-          for p in \
-            "../KernelSU-Next/kernel/selinux/rules.c" \
-            "drivers/kernelsu/selinux/rules.c"; do
-            [ -f "$p" ] && { RULES_C="$p"; break; }
-          done
-          [ -z "$RULES_C" ] && { echo "rules.c not found, skip"; exit 0; }
-          echo "Found: $RULES_C"
-
-          # Если предыдущий (сломанный) патч уже применён — убираем его
-          if grep -q "KSU 6.6 LINKER FIX\|ksu_kallsyms_lookup_name\|ksu_dup_sepolicy(void \*pol)" "$RULES_C"; then
-            echo "Removing broken V3 patch..."
-            python3 - "$RULES_C" << 'PYEOF'
-          import re, sys
-          path = sys.argv[1]
-          with open(path) as f:
-              src = f.read()
-          src = re.sub(
-              r'void \*ksu_dup_sepolicy\(void \*pol\);\nvoid ksu_destroy_sepolicy\(void \*pol\);\n',
-              '', src
-          )
-          src = re.sub(
-              r'/\* --- KSU 6\.6 LINKER FIX.*?#endif\n',
-              '', src, flags=re.DOTALL
-          )
-          with open(path, 'w') as f:
-              f.write(src)
-          print("Removed broken patch")
-          PYEOF
-          fi
-
-          # ПРАВИЛЬНЫЙ ФИКС: Удаляем макрос и обновляем имена структур для ядра 6.6
-          if grep -q "#define SELINUX_POLICY_INSTEAD_SELINUX_SS" "$RULES_C"; then
-            # 1. Удаляем макрос, чтобы форсировать путь #else (stop_machine)
-            sed -i '/#define SELINUX_POLICY_INSTEAD_SELINUX_SS/d' "$RULES_C"
-            
-            # 2. Исправляем старую структуру для совместимости с ядром 6.6
-            sed -i 's/struct selinux_ss \*ss = selinux_state.ss;/struct selinux_policy \*ss = selinux_state.policy;/g' "$RULES_C"
-            
-            # 3. Заглушаем rwlock, чтобы он вернул NULL и корректно триггерил stop_machine
-            sed -i 's/return &selinux_state.ss->policy_rwlock;/return NULL;/g' "$RULES_C"
-            
-            echo "Applied: forced stop_machine SELinux path for Linux 6.6"
-          else
-            echo "Already patched"
-          fi
-
       - name: "Apply SUSFS"
         shell: bash
         run: |
