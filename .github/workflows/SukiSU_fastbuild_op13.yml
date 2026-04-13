@@ -1379,7 +1379,7 @@ jobs:
           BBG="${{ github.event.inputs.baseband_guard }}"
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
-          MM="${{ github.event.inputs.multi_manager }}"
+          MM="true"
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
