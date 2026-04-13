@@ -707,6 +707,10 @@ jobs:
           # Support Mountify-style tmpfs xattrs (as in your base workflow)
           echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+          # Kprobes
+          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
+          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
 
       - name: Configure HMBIRD SCX Scheduler
         if: inputs.hmbird_enable
