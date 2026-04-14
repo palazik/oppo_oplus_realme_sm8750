@@ -354,11 +354,7 @@ jobs:
       - name: ⚡ Setup SukiSU Ultra | 配置 SukiSU Ultra
         run: |
           cd kernel_workspace/common
-
-          # 下载并执行设置脚本
-
           echo "🛠️ 正在设置SukiSU Ultra..."
-
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s builtin
 
           cd KernelSU
@@ -366,7 +362,8 @@ jobs:
           export KSUVER=$(expr $KSU_VERSION_COUNT + 37185)
           echo "KSUVER=$KSUVER" >> $GITHUB_ENV
 
-          KSU_API_VERSION=$(grep -m1 "KSU_VERSION_API :=" kernel/Kbuild | cut -d'=' -f2 | tr -d '[:space:]')
+          # Use recursive grep to find the API version regardless of path
+          KSU_API_VERSION=$(grep -r "KSU_VERSION_API :=" . | head -n 1 | cut -d'=' -f2 | tr -d '[:space:]')
 
           if [ -z "$KSU_API_VERSION" ]; then
             echo "❌ 错误：未能获取 KSU_API_VERSION" >&2
@@ -374,29 +371,32 @@ jobs:
           fi
 
           KSU_COMMIT_HASH=$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/builtin | cut -f1 | cut -c1-8)
-          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@chenhua13"
+          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks"
 
-          sed -i '/define get_ksu_version_full/,/endef/d' kernel/Kbuild
-          sed -i '/KSU_VERSION_API :=/d' kernel/Kbuild
-          sed -i '/KSU_VERSION_FULL :=/d' kernel/Kbuild
+          # Hardcode the version badge into whatever Kbuild file we found
+          find . -name "Kbuild" -exec sed -i '/define get_ksu_version_full/,/endef/d' {} +
+          find . -name "Kbuild" -exec sed -i '/KSU_VERSION_API :=/d' {} +
+          find . -name "Kbuild" -exec sed -i '/KSU_VERSION_FULL :=/d' {} +
 
+          # Create the new version header in the root Kbuild
+          KBUILD_FILE=$(find . -name "Kbuild" | head -n 1)
           TMP_FILE=$(mktemp)
           while IFS= read -r line; do
             echo "$line" >> "$TMP_FILE"
             if echo "$line" | grep -q 'REPO_OWNER :='; then
               cat >> "$TMP_FILE" <<EOF
           define get_ksu_version_full
-          v\\\$\$1-${KSU_COMMIT_HASH}@chenhua13
+          v\$\$1-${KSU_COMMIT_HASH}@palaziks
           endef
 
           KSU_VERSION_API := ${KSU_API_VERSION}
           KSU_VERSION_FULL := ${KSU_VERSION_FULL}
           EOF
             fi
-          done < kernel/Kbuild
-          mv "$TMP_FILE" kernel/Kbuild
+          done < "$KBUILD_FILE"
+          mv "$TMP_FILE" "$KBUILD_FILE"
 
-          echo "✅ SukiSU Ultra Added"
+          echo "✅ SukiSU Ultra version $KSU_VERSION_FULL configured."
 
       - name: Configure KSU & Misc
         run: |
