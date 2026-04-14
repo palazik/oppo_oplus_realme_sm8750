@@ -941,7 +941,7 @@ jobs:
             echo "Kernel Image not found, build may have failed."
             exit 1
           fi
-          KSU_TYPENAME="KSUNext"
+          KSU_TYPENAME="ReSukiSU"
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
             wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip || true
           fi
@@ -1290,13 +1290,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 OnePlus 13 SukiSU Ultra SM8750 Generic Kernel | Build Info
+          ### 📱 OnePlus 13 ReSukiSU SM8750 Generic Kernel | Build Info
           - **Kernel Version:** ${{ env.FULL_VERSION }}
           - **Build Time:** ${{ env.TIME_FORM }}
           - **Device:** Snapdragon 8 Elite Generic ${{ github.event.inputs.kernel_version }} Kernel (Based on OnePlus 13 ${{ github.event.inputs.kernel_version }} Official OKI source)
-          - **KSU Branch:** SukiSU Ultra
+          - **KSU Branch:** ReSukiSU
           - **SuSFS Support:** ${{ github.event.inputs.SUSFS }}
-          - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
+          - **KPM Support:** ${{ github.event.inputs.KPM }}
           - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
           - **LZ4KD Support:** ${{ github.event.inputs.lz4kd_enable }}
           - **BBR/Brutal TCP Algorithms:** ${{ github.event.inputs.bbr_enable }}
@@ -1325,7 +1325,7 @@ jobs:
           ### 📋 Installation Guide
           1. If you have a custom recovery (like TWRP) installed, you can flash the AnyKernel zip in recovery mode and reboot.
           2. If your phone is already rooted, you can install [HorizonKernelFlasher](https://github.com/libxzr/HorizonKernelFlasher/releases) and flash the AnyKernel zip through the app.
-          3. If you have previously flashed a SukiSU Ultra kernel, you can flash the AnyKernel zip directly in the KSU Manager app.
+          3. If you have previously flashed a ReSukiSU kernel, you can flash the AnyKernel zip directly in the KSU Manager app.
           4. If you are flashing a kernel *without* the LZ4KD patch over a kernel that *has* it, please disable your ZRAM module first to avoid errors.
           5. Modern KSU managers require a metamodule to mount modules properly. Recommended metamodules include: [meta overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs), [mountify](https://github.com/backslashxx/mountify), or [meta magicmount](https://github.com/7a72/meta-magic_mount/). If you are upgrading or using KSU for the first time, install one of these first.
           6. KernelPatch Next (KPN) is an independent KPM implementation. Do not use it if your kernel already has built-in KPM enabled.
