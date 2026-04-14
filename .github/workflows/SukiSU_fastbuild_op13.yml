@@ -366,11 +366,7 @@ jobs:
           export KSUVER=$(expr $KSU_VERSION_COUNT + 37185)
           echo "KSUVER=$KSUVER" >> $GITHUB_ENV
 
-          for i in {1..3}; do
-            KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Kbuild" | \
-              grep -m1 "KSU_VERSION_API :=" | cut -d'=' -f2 | tr -d '[:space:]')
-            [ -n "$KSU_API_VERSION" ] && break || sleep 2
-          done
+          KSU_API_VERSION=$(grep -m1 "KSU_VERSION_API :=" kernel/Kbuild | cut -d'=' -f2 | tr -d '[:space:]')
 
           if [ -z "$KSU_API_VERSION" ]; then
             echo "❌ 错误：未能获取 KSU_API_VERSION" >&2
