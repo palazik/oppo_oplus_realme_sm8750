@@ -351,36 +351,6 @@ jobs:
             ccache -sv
           fi
 
-      - name: Configure KSU & Misc
-        run: |
-          cd kernel_workspace
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
-            echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          if [ "${{ github.event.inputs.KPM }}" == true" ]; then
-            echo "📦 启用 KPM..."
-            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/check_defconfig//' ./common/build.config.gki
-          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
-          # Support Mountify-style tmpfs xattrs (as in your base workflow)
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          # Kprobes
-          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
-          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_DYNAMIC_FTRACE=y" >> "$DEFCONFIG"
-
       - name: ⚡ Setup SukiSU Ultra | 配置 SukiSU Ultra
         run: |
           cd kernel_workspace/kernel_platform
@@ -432,6 +402,36 @@ jobs:
 
           echo "✅ SukiSU Ultra Added"
 
+      - name: Configure KSU & Misc
+        run: |
+          cd kernel_workspace
+          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
+          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
+            echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          if [ "${{ github.event.inputs.KPM }}" == "true" ]; then
+            echo "📦 启用 KPM..."
+            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+          # Support Mountify-style tmpfs xattrs (as in your base workflow)
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+          # Kprobes
+          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
+          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
+          echo "CONFIG_DYNAMIC_FTRACE=y" >> "$DEFCONFIG"
+
       - name: 🔧 Setup Patches | 配置补丁
         run: |
           cd kernel_workspace
@@ -456,6 +456,8 @@ jobs:
             sed -i '/ksu_handle/d' ./common/50_add_susfs_in_gki-android15-6.6.patch
           else
             cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
+            echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
 
           cd ./common
@@ -485,11 +487,6 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          else 
-            echo "📦 启用 MANUAL_HOOK..."
-            echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
           
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         if: inputs.lz4_enable
