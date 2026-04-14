@@ -353,7 +353,7 @@ jobs:
 
       - name: ⚡ Setup SukiSU Ultra | 配置 SukiSU Ultra
         run: |
-          cd kernel_workspace/kernel_platform
+          cd kernel_workspace/common
 
           # 下载并执行设置脚本
 
@@ -445,7 +445,7 @@ jobs:
           git clone https://github.com/mrcxlinux/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
-          cd kernel_platform
+          cd common
 
           echo "📝 复制补丁文件..."
 
@@ -475,7 +475,7 @@ jobs:
       - name: Configure SuSFS
         if: inputs.SUSFS
         run: |
-          cd kernel_workspace
+          cd kernel_workspace/common
           DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
