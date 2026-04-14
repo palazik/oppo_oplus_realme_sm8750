@@ -360,7 +360,7 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
           # Multi-Manager Support
-          echo "CONFIG_KSU_MULTI_MANAGER_SUPPORT=y" >> /arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_MULTI_MANAGER_SUPPORT=y" >> arch/arm64/configs/gki_defconfig
 
           cd KernelSU
 
