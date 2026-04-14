@@ -377,7 +377,7 @@ jobs:
           echo "⬇️ 克隆所需补丁..."
 
           if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then          
-            git clone https://gitlab.com/cctv18/susfs4oki.git -b oki-android15-6.6
+            git clone https://github.com/cctv18/susfs4oki.git -b oki-android15-6.6
           fi
 
           git clone https://github.com/mrcxlinux/kernel_patches.git
