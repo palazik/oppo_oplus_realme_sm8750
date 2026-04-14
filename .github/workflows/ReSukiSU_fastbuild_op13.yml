@@ -991,13 +991,13 @@ jobs:
           REPO="${{ github.repository }}"
           TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
 
-          KSU_TYPE="SukiSU Ultra"
-          KSU_DISPLAY="SukiSU Ultra"
+          KSU_TYPE="ReSukiSU"
+          KSU_DISPLAY="ReSukiSU"
           KSUVER="${{ env.KSUVER }}"
           SUFFIX="-palaziks-ShiftPorts"
           LTO="${{ github.event.inputs.lto_type }}"
           SUSFS="${{ github.event.inputs.SUSFS }}"
-          KPM="${{ github.event.inputs.kpm_enable }}"
+          KPM="${{ github.event.inputs.KPM }}"
           BBR="${{ github.event.inputs.bbr_enable }}"
           ADIOS="${{ github.event.inputs.adios_enable }}"
           BBG="${{ github.event.inputs.baseband_guard }}"
@@ -1281,7 +1281,7 @@ jobs:
           echo "TIME_FORM=$TIME_FORM" >> $GITHUB_ENV
           TAG_HEAD="OPPO-OPlus-Realme-build"
           echo "TAG_HEAD=$TAG_HEAD" >> $GITHUB_ENV
-          KSU_TYPENAME="SukiSU Ultra"
+          KSU_TYPENAME="ReSukiSU"
           echo "KSU_TYPENAME=$KSU_TYPENAME" >> $GITHUB_ENV
           
       - name: Create Release
