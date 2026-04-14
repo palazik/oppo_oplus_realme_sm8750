@@ -945,9 +945,6 @@ jobs:
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
             wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip || true
           fi
-          if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
-            wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip || true
-          fi
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_palaziks.zip
             FULL_VERSION=${{ github.event.inputs.kernel_version }}-palaziks
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_${{ env.KERNEL_NAME }}.zip
@@ -981,27 +978,6 @@ jobs:
         with:
           name: ${{ steps.create_zip.outputs.ak3name }}
           path: ${{ github.workspace }}/kernel_workspace/AnyKernel*.zip
-
-      - name: 📝 Make ZRAM module | 制作 ZRAM 模块
-        run: |
-          set -e
-          echo "📥 正在下载 zram.zip…"
-          curl -L "https://github.com/cctv18/oppo_oplus_realme_sm8750/raw/refs/heads/main/zram.zip" -o "$GITHUB_WORKSPACE/zram.zip"
-          
-          echo "📦 正在解压…"
-          unzip -q "$GITHUB_WORKSPACE/zram.zip" -d "$GITHUB_WORKSPACE/zram"
-          
-          echo "🔁 正在替换 zram.ko…"
-          find "$GITHUB_WORKSPACE/zram" -name "zram.ko" -exec cp "./kernel_workspace/common/out/drivers/block/zram/zram.ko" {} \;
-          rm -rf $GITHUB_WORKSPACE/zram.zip
-          
-          echo "✅ 完成！"
-          
-      - name: 📤 Upload zram.zip | 上传 zram.zip
-        uses: actions/upload-artifact@v7
-        with:
-          name: zram-module
-          path: ./zram/*
 
       - name: Send Telegram Notification
         if: inputs.telegram_notify && always()
@@ -1257,6 +1233,27 @@ jobs:
           " || echo "ZIP upload failed (size limit?)"
             fi
           fi
+
+      - name: 📝 Make ZRAM module | 制作 ZRAM 模块
+        run: |
+          set -e
+          echo "📥 正在下载 zram.zip…"
+          curl -L "https://github.com/cctv18/oppo_oplus_realme_sm8750/raw/refs/heads/main/zram.zip" -o "$GITHUB_WORKSPACE/zram.zip"
+          
+          echo "📦 正在解压…"
+          unzip -q "$GITHUB_WORKSPACE/zram.zip" -d "$GITHUB_WORKSPACE/zram"
+          
+          echo "🔁 正在替换 zram.ko…"
+          find "$GITHUB_WORKSPACE/zram" -name "zram.ko" -exec cp "./kernel_workspace/common/out/drivers/block/zram/zram.ko" {} \;
+          rm -rf $GITHUB_WORKSPACE/zram.zip
+          
+          echo "✅ 完成！"
+          
+      - name: 📤 Upload zram.zip | 上传 zram.zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: zram-module
+          path: ./zram/*
 
   release:
     needs: build
