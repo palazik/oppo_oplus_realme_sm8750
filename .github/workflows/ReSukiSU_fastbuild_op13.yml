@@ -353,7 +353,7 @@ jobs:
 
       - name: ⚡ Setup ReSukiSU | 配置 ReSukiSU
         run: |
-          cd kernel_workspace/kernel_platform
+          cd kernel_workspace/common
 
           # 下载并执行设置脚本
           echo "🛠️ 正在设置ReSukiSU..."
@@ -994,7 +994,7 @@ jobs:
           unzip -q "$GITHUB_WORKSPACE/zram.zip" -d "$GITHUB_WORKSPACE/zram"
           
           echo "🔁 正在替换 zram.ko…"
-          find "$GITHUB_WORKSPACE/zram" -name "zram.ko" -exec cp "./kernel_workspace/kernel_platform/common/out/drivers/block/zram/zram.ko" {} \;
+          find "$GITHUB_WORKSPACE/zram" -name "zram.ko" -exec cp "./kernel_workspace/common/out/drivers/block/zram/zram.ko" {} \;
           rm -rf $GITHUB_WORKSPACE/zram.zip
           
           echo "✅ 完成！"
