@@ -453,6 +453,7 @@ jobs:
             cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
             cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
             cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
+            sed -i '/ksu_handle/d' ./common/50_add_susfs_in_gki-android15-6.6.patch
           else
             cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
           fi
@@ -960,19 +961,16 @@ jobs:
           key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
           
       - name: Apply KPM to Kernel
+        if: ${{ github.event.inputs.KPM == 'true' }}
         run: |
-          if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
-            echo "Applying KP-N and patching kernel..."
-            cd kernel_workspace/common/out/arch/arm64/boot
-            wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kptools-linux
-            wget https://github.com/KernelSU-Next/KPatch-Next/releases/latest/download/kpimg-linux
-            chmod +x ./kptools-linux
-            ./kptools-linux -p -i ./Image -k ./kpimg-linux -o ./oImage
-            rm -f Image
-            mv oImage Image
-          elif [[ ${{ github.event.inputs.kpm_enable }} == 'builtin' ]]; then
-            echo "Built-in KPM is for SukiSU only. Skipping for KSU Next."
-          fi
+          echo "Applying SukiSU Ultra KPM patch..."
+          cd kernel_workspace/common/out/arch/arm64/boot
+          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.13.0/patch_linux
+          chmod +x patch_linux
+          ./patch_linux
+          rm -f Image
+          mv oImage Image
+          echo "✅ KPM patch applied to kernel image."
           
       - name: Clone AnyKernel3 and Package ZIP
         id: create_zip
