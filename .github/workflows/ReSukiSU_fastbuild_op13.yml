@@ -383,16 +383,14 @@ jobs:
           git clone https://github.com/mrcxlinux/kernel_patches.git
           git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
-          cd common
-
           echo "📝 复制补丁文件..."
 
           if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-            cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
-            cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
+            cp susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
+            cp susfs4oki/kernel_patches/fs/* ./common/fs/
+            cp susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
           else
-            cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
+            cp kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
           fi
 
           cd ./common
