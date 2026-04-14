@@ -359,11 +359,10 @@ jobs:
           echo "🛠️ 正在设置ReSukiSU..."
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
-          cd KernelSU
+          # Multi-Manager Support
+          echo "CONFIG_KSU_MULTI_MANAGER_SUPPORT=y" >> /arch/arm64/configs/gki_defconfig
 
-          echo "📦 正在启用multimanager支持..."
-          curl -L "https://raw.githubusercontent.com/mrcxlinux/kernel_patches/refs/heads/main/sukisu/resukisu_multimanager.patch" -o "resukisu_multimanager.patch"
-          patch -p1 < resukisu_multimanager.patch
+          cd KernelSU
 
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 30700)
 
@@ -408,7 +407,7 @@ jobs:
 
           echo "✅ SuSFS Added"
 
-      - name: Configure KSU & Misc
+      - name: Apply kernel patches
         run: |
           cd kernel_workspace
           DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
@@ -446,57 +445,52 @@ jobs:
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+          if [ "${{ github.event.inputs.lz4_enable }}" == "true" ]; then
+            echo "Adding LZ4 patch..."
+            git clone --depth=1 https://github.com/$GITHUB_REPOSITORY.git -b $GITHUB_REF_NAME $GITHUB_ACTOR || true
+            cp ./$GITHUB_ACTOR/zram_patch/001-lz4.patch ./common/ || true
+            cp ./$GITHUB_ACTOR/zram_patch/lz4armv8.S ./common/lib || true
+            cp ./$GITHUB_ACTOR/zram_patch/002-zstd.patch ./common/ || true
+            cd ./common
+            git apply -p1 < 001-lz4.patch || true
+            patch -p1 < 002-zstd.patch || true
+          fi
+
+          if [ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]; then
+            echo "Adding LZ4KD patch..."
+            if [ ! -d "SukiSU_patch" ]; then
+              git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git
+            fi
+            cd common
+            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/
+            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib
+            cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
+            cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
+            patch -p1 -F 3 < lz4kd.patch || true
+          fi
+
+          if [ "${{ github.event.inputs.hmbird_enable }}" == "true" ]; then
+            cd common
+            echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
+            # HMBIRD патчи от TheWildJames / Numbersf
+            git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
+            if [ -d /tmp/hmbird_patch ]; then
+              # Применяем патч overwriter если есть
+              for p in /tmp/hmbird_patch/*.patch; do
+                [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
+              done
+            fi
+            # Конфиги для HMBIRD
+            cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+            CONFIG_SCHED_CLASS_EXT=y
+            CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
+            CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
+            EOF
+          fi
+          
           # Support Mountify-style tmpfs xattrs (as in your base workflow)
           echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          
-      - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
-        if: inputs.lz4_enable
-        run: |
-          echo "Adding LZ4 & ZSTD patches..."
-          cd kernel_workspace
-          git clone --depth=1 https://github.com/$GITHUB_REPOSITORY.git -b $GITHUB_REF_NAME $GITHUB_ACTOR || true
-          cp ./$GITHUB_ACTOR/zram_patch/001-lz4.patch ./common/ || true
-          cp ./$GITHUB_ACTOR/zram_patch/lz4armv8.S ./common/lib || true
-          cp ./$GITHUB_ACTOR/zram_patch/002-zstd.patch ./common/ || true
-          cd ./common
-          git apply -p1 < 001-lz4.patch || true
-          patch -p1 < 002-zstd.patch || true
-
-      - name: Apply LZ4KD Patch
-        if: inputs.lz4kd_enable
-        run: |
-          echo "Adding LZ4KD patch..."
-          cd kernel_workspace
-          if [ ! -d "SukiSU_patch" ]; then
-            git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git
-          fi
-          cd common
-          cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/
-          cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib
-          cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
-          cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
-          patch -p1 -F 3 < lz4kd.patch || true
-
-      - name: Configure HMBIRD SCX Scheduler
-        if: inputs.hmbird_enable
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
-          # HMBIRD патчи от TheWildJames / Numbersf
-          git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
-          if [ -d /tmp/hmbird_patch ]; then
-            # Применяем патч overwriter если есть
-            for p in /tmp/hmbird_patch/*.patch; do
-              [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
-            done
-          fi
-          # Конфиги для HMBIRD
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_SCHED_CLASS_EXT=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
-          EOF
  
       - name: Apply Unicode Bypass Fix
         if: inputs.unicode_fix
