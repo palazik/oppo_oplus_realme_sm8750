@@ -1,4 +1,4 @@
-name: SukiSU Ultra OP13 Build
+name: ReSukiSU Ultra OP13 Build
 
 env:
   TZ: Asia/Shanghai
@@ -26,7 +26,7 @@ on:
         type: boolean
         default: true
       KPM:
-        description: 'Enable KPM (builtin for (re)sukisu, kpn for independent KPM)'
+        description: 'Enable KPM'
         required: true
         type: boolean
         default: true
