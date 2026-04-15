@@ -164,10 +164,20 @@ jobs:
       actions: write
       contents: read
     steps:
+
+      - name: Cache Toolchains
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            kernel_workspace/zyc_clang
+            kernel_workspace/clang-aosp
+            kernel_workspace/build-tools
+          # The key depends on the inputs so if you switch compilers, it downloads the new one
+          key: toolchain-${{ github.event.inputs.clang_version }}
+
       - name: Install dependencies & Init Source/Clang
         run: |
-          rm -rf kernel_workspace
-          mkdir kernel_workspace
           cd kernel_workspace
           echo "Current Repo: $GITHUB_REPOSITORY"
           echo "Current Branch: $GITHUB_REF_NAME"
@@ -179,9 +189,12 @@ jobs:
           sudo apt update &&
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 &
 
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+
           if [[ ${{ github.event.inputs.kernel_version }} == "6.6.89" ]]; then
             echo "Cloning source repository..."
-            curl -L https://github.com/cctv18/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.89.zip -o common.zip && 
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/sm8750_v_16.0.0_oneplus_13_6.6.89.zip -o common.zip && 
             unzip -q common.zip && 
             mv "android_kernel_common_oneplus_sm8750-oneplus-sm8750_v_16.0.0_oneplus_13_6.6.89" common &&
             rm -rf common.zip &
@@ -208,22 +221,7 @@ jobs:
             rm -rf common.zip &
           fi
 
-          # Checking clang_version
-          # Using Google's newest Clang (r584948)
-          if [[ ${{ github.event.inputs.clang_version }} == "clang20" ]]; then
-            echo "Fetching Clang 20..."
-            mkdir -p clang18 &&
-            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/clang-r547379.zip" -o clang.zip &&
-            unzip -q clang.zip -d clang18 &&
-            rm -rf clang.zip &
-
-            # Match it with Official Google Build Tools for 6.6 GKI
-            echo "Fetching matching Google Build Tools..." &&
-            curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/build-tools.zip" -o build-tools.zip &&
-            unzip -q build-tools &&
-            rm -rf build-tools.zip &
-
-          elif [[ ${{ github.event.inputs.clang_version }} == "zyc_clang" ]]; then
+          if [ ! -d "zyc-clang/bin" ]; then
             echo "Fetching ZyCromerZ Clang 19 (Oryon Supported)..."
             mkdir -p zyc-clang
             aria2c -s16 -x16 -k1M "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz" -o zyc-clang.tar.gz
@@ -233,47 +231,8 @@ jobs:
             echo "Fetching CodeLinaro/Qualcomm Build Tools (For perfect BTF compat)..."
             # Pulling the exact branch from the OP13 XML manifest
             git clone --depth=1 -b ks-kernel.lnx.4.0.r1-rel https://git.codelinaro.org/clo/la/kernel/prebuilts/build-tools.git build-tools &
-
-          elif [[ ${{ github.event.inputs.clang_version }} == "neutron" ]]; then
-            echo "Fetching Neutron Clang..."
-            # Create a dedicated folder and run antman inside it
-            mkdir -p neutron-clang
-            curl -sSL "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman" -o neutron-clang/antman
-            cd neutron-clang
-            bash antman -S
-            cd ..
-
-            # We still need Google's build-tools for 'dtc' and 'pahole'
-            echo "Fetching Official Google Build Tools..."
-            mkdir -p build-tools
-            curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
-            tar -C build-tools -zxf build-tools.tar.gz
-            rm -rf build-tools.tar.gz &
-
-          elif [[ ${{ github.event.inputs.clang_version }} == "aosp_clang" ]]; then
-            echo "Fetching Google AOSP Clang r584948 (LLVM 22-based)..."
-            mkdir -p clang-aosp
-            aria2c -s16 -x16 -k1M "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/mirror-goog-main-llvm-toolchain-source/clang-r584948.tar.gz" -o clang.tar.gz
-            tar -C clang-aosp -zxf clang.tar.gz
-            rm -rf clang.tar.gz &
-
-            echo "Fetching Official Google Build Tools..."
-            mkdir -p build-tools
-            curl -L "https://android.googlesource.com/kernel/prebuilts/build-tools/+archive/refs/heads/main/linux-x86.tar.gz" -o build-tools.tar.gz
-            tar -C build-tools -zxf build-tools.tar.gz
-            rm -rf build-tools.tar.gz &
-
-          elif [[ ${{ github.event.inputs.clang_version }} == "clang18" ]]; then
-            echo "Cloning LLVM-Clang18 toolchain..." &&
-            mkdir -p clang18 &&
-            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
-            unzip -q clang.zip -d clang18 &&
-            rm -rf clang.zip &
-            
-            echo "Cloning build tools..." &&
-            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
-            unzip -q build-tools.zip &&
-            rm -rf build-tools.zip &
+          else
+            echo "Toolchains restored from cache! Skipping download."
           fi
           
           wait
@@ -352,6 +311,7 @@ jobs:
           echo "Configuring CCache size to: $CCACHE_MAXSIZE"
           ccache -M "$CCACHE_MAXSIZE"
           ccache -o compression=true
+          ccache -o compression_level=1
           
           echo "Initial CCache status:"
           ccache -s
@@ -893,15 +853,8 @@ jobs:
           echo "--- Pre-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
           
-          sudo rm -rf /usr/share/dotnet &
-          sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
-
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
-          CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out \
-          KCFLAGS="-O2 -Wno-error -Wno-implicit-function-declaration -Wno-implicit-int -Wno-default-const-init-var-unsafe -Wno-format -Wno-unknown-warning-option" \
-          gki_defconfig && \
           
           make -j$(nproc --all) LLVM=1 LLVM_IAS=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- \
             CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out \
