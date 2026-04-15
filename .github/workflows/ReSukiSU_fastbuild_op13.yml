@@ -289,7 +289,7 @@ jobs:
           echo "Current Build Kernel Version: ${{ github.event.inputs.kernel_version }}"
 
       - name: Restore CCache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         id: ccache-restore
         with:
           path: ${{ env.CCACHE_DIR }}
