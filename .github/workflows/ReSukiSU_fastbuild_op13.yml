@@ -14,12 +14,12 @@ on:
         description: 'Choose kernel version to build'
         required: true
         type: choice
-        default: '6.6.89'
+        default: '6.6.118'
         options:
+          - '6.6.118'
           - '6.6.89'
-          - '6.6.100'
-          - '6.6.102'
           - '6.6.111'
+          - '6.6.100'
       SUSFS:
         description: 'Enable SuSFS (Enhances hide environment)'
         required: true
@@ -184,9 +184,9 @@ jobs:
             mv OnePlus_Kernel_Backport-* common &&
             rm -rf common.zip &
 
-          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.102" ]]; then
+          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.118" ]]; then
             echo "Cloning source repository..."
-            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.102_oneplus13_coloros16.0.5.zip -o common.zip && 
+            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.118_oneplus13_coloros16.0.5.zip -o common.zip && 
             unzip -q common.zip && 
             mv OnePlus_Kernel_Backport-* common &&
             rm -rf common.zip &
