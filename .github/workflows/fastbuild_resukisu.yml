@@ -170,11 +170,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            kernel_workspace/zyc_clang
+            kernel_workspace/zyc-clang
             kernel_workspace/clang-aosp
             kernel_workspace/build-tools
           # The key depends on the inputs so if you switch compilers, it downloads the new one
-          key: ${{ github.event.inputs.clang_version }}
+          key: toolchain-${{ github.event.inputs.clang_version }}
 
       - name: Install dependencies & Init Source/Clang
         run: |
