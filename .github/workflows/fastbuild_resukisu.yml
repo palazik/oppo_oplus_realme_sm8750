@@ -178,6 +178,7 @@ jobs:
 
       - name: Install dependencies & Init Source/Clang
         run: |
+          mkdir -p kernel_workspace
           cd kernel_workspace
           echo "Current Repo: $GITHUB_REPOSITORY"
           echo "Current Branch: $GITHUB_REF_NAME"
