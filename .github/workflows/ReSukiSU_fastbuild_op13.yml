@@ -33,7 +33,7 @@ on:
         description: 'Enable KPM'
         required: true
         type: boolean
-        default: true
+        default: false
       clang_version:
         description: 'Choose clang version for building kernel'
         required: true
