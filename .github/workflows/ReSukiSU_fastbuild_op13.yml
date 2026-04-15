@@ -93,8 +93,13 @@ on:
           - 'none'
           - 'thin'
           - 'full'
+      fengchi:
+        description: 'Enable Fengchi Optimization'
+        required: true
+        type: boolean
+        default: true
       hmbird_enable:
-        description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
+        description: 'Enable HMBIRD (Needs disabled Fengchi, Fengchi better)'
         required: true
         type: boolean
         default: false
@@ -112,7 +117,7 @@ on:
         description: 'Enable SchedUtil optimizations (better CPU governor)'
         required: true
         type: boolean
-        default: true
+        default: false
       telegram_notify:
         description: 'Send Telegram notification after build'
         required: true
@@ -122,7 +127,7 @@ on:
         description: 'CPU Optimizations (Oryon MCPU tuning for SM8750)'
         required: true
         type: boolean
-        default: true
+        default: false
       f2fs_opt:
         description: 'F2FS Optimizations (better flash storage performance)'
         required: true
@@ -480,26 +485,6 @@ jobs:
           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
           cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || true
-
-      - name: Configure HMBIRD SCX Scheduler
-        if: inputs.hmbird_enable
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
-          # HMBIRD патчи от TheWildJames / Numbersf
-          git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
-          if [ -d /tmp/hmbird_patch ]; then
-            # Применяем патч overwriter если есть
-            for p in /tmp/hmbird_patch/*.patch; do
-              [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
-            done
-          fi
-          # Конфиги для HMBIRD
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_SCHED_CLASS_EXT=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
-          EOF
  
       - name: Apply Unicode Bypass Fix
         if: inputs.unicode_fix
@@ -525,6 +510,40 @@ jobs:
           cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ZRAM_WRITEBACK=y
           CONFIG_ZRAM_MEMORY_TRACKING=y
+          EOF
+
+      - name: ⚙️ Apply Fengchi (HMBIRD) SCHED Patch
+        if: inputs.fengchi
+        run: |
+          cd kernel_workspace/common
+
+          echo "⬇️ Fetching Fengchi (HMBIRD) patch for SM8750..."
+          git clone https://github.com/Numbersf/SCHED_PATCH.git -b "sm8750" /tmp/sched_patch
+
+          # Explicitly target the OnePlus 13 (PJZ110) on ColorOS 16
+          # The repo usually names it fengchi_OP13_OOS16.patch or fengchi_PJZ110_OOS16.patch
+          PATCH_FILE=$(ls /tmp/sched_patch/fengchi_*OP13*.patch /tmp/sched_patch/fengchi_*PJZ110*.patch 2>/dev/null | head -n 1)
+
+          if [[ -f "$PATCH_FILE" ]]; then
+            PATCH_NAME=$(basename "$PATCH_FILE")
+            echo "⚙️ Found patch: $PATCH_NAME. Applying..."
+            cp "$PATCH_FILE" ./
+            dos2unix "$PATCH_NAME"
+            patch -p1 -F 3 < "$PATCH_NAME"
+            echo "✅ Perfect Fengchi patch applied successfully!"
+          else
+            echo "⚠️ Specific OP13 patch not found, falling back to OGKI to GKI patch..."
+            sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
+            wget -q https://github.com/Numbersf/Action-Build/raw/SukiSU-Ultra/patches/hmbird_patch.patch
+            patch -p1 -F 3 < hmbird_patch.patch
+            echo "✅ OGKI to GKI patch applied!"
+          fi
+          
+          # Enable the config flags required for the patch
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_SCHED_CLASS_EXT=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
           EOF
  
       - name: Configure SchedUtil Optimizations
@@ -968,7 +987,7 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
-          echo "susfs: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
+          echo "SuSFS: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.KPM }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
@@ -1009,6 +1028,7 @@ jobs:
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
           MM="true"
+          FENGCHI="${{ github.event.inputs.fengchi }}"
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
@@ -1041,7 +1061,7 @@ jobs:
             export TG_REPO="$REPO"
             export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
             export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
-            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
+            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_FENGCHI="$FENGCHI" TG_HMBIRD="$HMBIRD"
             export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
             export TG_SCHED="$SCHED" TG_CLANG="$CLANG"
             export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
@@ -1105,6 +1125,7 @@ jobs:
                   feat(e("TG_LZ4"),    "LZ4 1.10.0 + ZSTD 1.5.7"),
                   feat(e("TG_LZ4KD"), "LZ4KD ZRAM"),
                   feat(e("TG_MM"),     "Multi-Manager Support"),
+                  feat(e("TG_FENGCHI"), "Fengchi Optimization"),
                   feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
@@ -1308,6 +1329,7 @@ jobs:
           - **ADIOS IO Scheduler:** ${{ github.event.inputs.adios_enable }}
           - **Re-Kernel Support:** ${{ github.event.inputs.rekernel_enable }}
           - **Baseband Guard Support:** ${{ github.event.inputs.baseband_guard }}
+          - **Fengchi Optimization** ${{ github.event.inputs.fengchi }}
           - **HMBIRD SCX Scheduler:** ${{ github.event.inputs.hmbird_enable }}
           - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
           - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
