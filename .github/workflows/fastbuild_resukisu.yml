@@ -1,4 +1,4 @@
-name: FastBuild ReSukiSU Ultra OP13 Build
+name: FastBuild NON-ROOT OP13 Build
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.kernel_version }}
@@ -24,16 +24,6 @@ on:
           - '6.6.118'
           - '6.6.111'
           - '6.6.100'
-      SUSFS:
-        description: 'Enable SuSFS (Enhances hide environment)'
-        required: true
-        type: boolean
-        default: true
-      KPM:
-        description: 'Enable KPM'
-        required: true
-        type: boolean
-        default: false
       clang_version:
         description: 'Choose clang version for building kernel'
         required: true
@@ -45,35 +35,6 @@ on:
           - 'aosp_clang'
           - 'clang20'
           - 'clang18'
-      lz4_enable:
-        description: 'Install LZ4 1.10.0 + ZSTD 1.5.7 Patch'
-        required: true
-        type: boolean
-        default: true
-      lz4kd_enable:
-        description: 'Install LZ4KD Patch (ZRAM optimization)'
-        required: true
-        type: boolean
-        default: false
-      bbr_enable:
-        description: "Enable TCP BBR/Brutal (false=off, true=add, default=set as default)"
-        required: true
-        type: choice
-        default: 'true'
-        options:
-          - 'false'
-          - 'true'
-          - 'default'
-      adios_enable:
-        description: 'Enable ADIOS IO Scheduler (Improves IO read/write performance)'
-        required: true
-        type: boolean
-        default: true
-      rekernel_enable:
-        description: 'Enable Re-Kernel Support (Enhances app freezing via NoActive/Freezer)'
-        required: true
-        type: boolean
-        default: false
       baseband_guard:
         description: 'Enable Baseband Guard (Anti-brick modem protection)'
         required: true
@@ -84,30 +45,11 @@ on:
         required: true
         type: boolean
         default: false
-      lto_type:
-        description: 'LTO Optimization (none = fast compile, thin = default, full = slow)'
-        required: true
-        type: choice
-        default: 'none'
-        options:
-          - 'none'
-          - 'thin'
-          - 'full'
-      hmbird_enable:
-        description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
-        required: true
-        type: boolean
-        default: false
       unicode_fix:
         description: 'Enable Unicode Bypass Fix (path traversal protection)'
         required: true
         type: boolean
         default: true
-      zram_writeback:
-        description: 'Enable ZRAM Writeback (better memory management)'
-        required: true
-        type: boolean
-        default: false
       schedutil_opt:
         description: 'Enable SchedUtil optimizations (better CPU governor)'
         required: true
@@ -115,36 +57,6 @@ on:
         default: true
       telegram_notify:
         description: 'Send Telegram notification after build'
-        required: true
-        type: boolean
-        default: true
-      cpu_opt:
-        description: 'CPU Optimizations (Oryon MCPU tuning for SM8750)'
-        required: true
-        type: boolean
-        default: true
-      f2fs_opt:
-        description: 'F2FS Optimizations (better flash storage performance)'
-        required: true
-        type: boolean
-        default: false
-      wireguard:
-        description: 'Enable WireGuard VPN support'
-        required: true
-        type: boolean
-        default: false
-      netfilter_full:
-        description: 'Full Netfilter (conntrack, NAT, hashlimit)'
-        required: true
-        type: boolean
-        default: false
-      lrng_enable:
-        description: 'Enable LRNG v59 (better entropy for crypto/gaming)'
-        required: true
-        type: boolean
-        default: false
-      wakelock_blocker:
-        description: 'Enable Wakelock Blocker (better idle battery drain)'
         required: true
         type: boolean
         default: true
@@ -164,17 +76,6 @@ jobs:
       actions: write
       contents: read
     steps:
-
-      - name: Cache Toolchains
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            kernel_workspace/zyc-clang
-            kernel_workspace/clang-aosp
-            kernel_workspace/build-tools
-          # The key depends on the inputs so if you switch compilers, it downloads the new one
-          key: toolchain-${{ github.event.inputs.clang_version }}
 
       - name: Install dependencies & Init Source/Clang
         run: |
@@ -222,19 +123,15 @@ jobs:
             rm -rf common.zip &
           fi
 
-          if [ ! -d "zyc-clang/bin" ]; then
-            echo "Fetching ZyCromerZ Clang 19 (Oryon Supported)..."
-            mkdir -p zyc-clang
-            aria2c -s16 -x16 -k1M "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz" -o zyc-clang.tar.gz
-            tar -C zyc-clang -zxf zyc-clang.tar.gz
-            rm -rf zyc-clang.tar.gz &
+          echo "Fetching ZyCromerZ Clang 19 (Oryon Supported)..."
+          mkdir -p zyc-clang
+          aria2c -s16 -x16 -k1M "https://github.com/ZyCromerZ/Clang/releases/download/19.0.0git-20240723-release/Clang-19.0.0git-20240723.tar.gz" -o zyc-clang.tar.gz
+          tar -C zyc-clang -zxf zyc-clang.tar.gz
+          rm -rf zyc-clang.tar.gz &
 
-            echo "Fetching CodeLinaro/Qualcomm Build Tools (For perfect BTF compat)..."
-            # Pulling the exact branch from the OP13 XML manifest
-            git clone --depth=1 -b ks-kernel.lnx.4.0.r1-rel https://git.codelinaro.org/clo/la/kernel/prebuilts/build-tools.git build-tools &
-          else
-            echo "Toolchains restored from cache! Skipping download."
-          fi
+          echo "Fetching CodeLinaro/Qualcomm Build Tools (For perfect BTF compat)..."
+          # Pulling the exact branch from the OP13 XML manifest
+          git clone --depth=1 -b ks-kernel.lnx.4.0.r1-rel https://git.codelinaro.org/clo/la/kernel/prebuilts/build-tools.git build-tools &
           
           wait
           echo "Source and tools initialized successfully!"
@@ -322,152 +219,12 @@ jobs:
             ccache -sv
           fi
 
-      - name: ⚡ Setup ReSukiSU | 配置 ReSukiSU
-        run: |
-          cd kernel_workspace/common
-
-          # 下载并执行设置脚本
-          echo "🛠️ 正在设置ReSukiSU..."
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-
-          # Multi-Manager Support
-          echo "CONFIG_KSU_MULTI_MANAGER_SUPPORT=y" >> arch/arm64/configs/gki_defconfig
-
-          cd KernelSU
-
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 30700)
-
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-
-          echo "✅ ReSukiSU 配置完成"
-
-      - name: 🔧 Setup Patches | 配置补丁
-        run: |
-          cd kernel_workspace
-
-          echo "⬇️ 克隆所需补丁..."
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then          
-            git clone https://github.com/cctv18/susfs4oki.git -b oki-android15-6.6
-          fi
-
-          git clone https://github.com/mrcxlinux/kernel_patches.git
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git
-
-          echo "📝 复制补丁文件..."
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            cp susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-            cp susfs4oki/kernel_patches/fs/* ./common/fs/
-            cp susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
-          else
-            cp kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
-          fi
-
-          cd ./common
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            echo "📦 应用SUSFS补丁..."
-            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-          else
-            echo "📦 应用MANUAL_HOOK补丁..."
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
-          fi
-
-          echo "✅ SuSFS Added"
-
       - name: Apply kernel patches
         run: |
           cd kernel_workspace
           DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_KSU=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
-            echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          if [ "${{ github.event.inputs.KPM }}" == "true" ]; then
-            echo "📦 启用 KPM..."
-            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          sed -i 's/check_defconfig//' ./common/build.config.gki
-          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            echo "📦 启用 SUSFS 功能..."
-            echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
-          else 
-            echo "📦 启用 MANUAL_HOOK..."
-            echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-          
-          # Support Mountify-style tmpfs xattrs (as in your base workflow)
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
           # FastBuild
           echo "CONFIG_DEBUG_INFO_NONE=y" >> ./common/arch/arm64/configs/gki_defconfig
-
-      - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
-        if: inputs.lz4_enable
-        run: |
-          echo "Adding LZ4 & ZSTD patches..."
-          cd kernel_workspace
-          git clone --depth=1 https://github.com/$GITHUB_REPOSITORY.git -b $GITHUB_REF_NAME $GITHUB_ACTOR || true
-          cp ./$GITHUB_ACTOR/zram_patch/001-lz4.patch ./common/ || true
-          cp ./$GITHUB_ACTOR/zram_patch/lz4armv8.S ./common/lib || true
-          cp ./$GITHUB_ACTOR/zram_patch/002-zstd.patch ./common/ || true
-          cd ./common
-          git apply -p1 < 001-lz4.patch || true
-          patch -p1 < 002-zstd.patch || true
-
-      - name: Apply LZ4KD Patch
-        if: inputs.lz4kd_enable
-        run: |
-          echo "Adding LZ4KD patch..."
-          cd kernel_workspace
-          if [ ! -d "SukiSU_patch" ]; then
-            git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git
-          fi
-          cd common
-          cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/
-          cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib
-          cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
-          cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
-          patch -p1 -F 3 < lz4kd.patch || true
-
-      - name: Configure HMBIRD SCX Scheduler
-        if: inputs.hmbird_enable
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
-          # HMBIRD патчи от TheWildJames / Numbersf
-          git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
-          if [ -d /tmp/hmbird_patch ]; then
-            # Применяем патч overwriter если есть
-            for p in /tmp/hmbird_patch/*.patch; do
-              [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
-            done
-          fi
-          # Конфиги для HMBIRD
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_SCHED_CLASS_EXT=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
-          EOF
  
       - name: Apply Unicode Bypass Fix
         if: inputs.unicode_fix
@@ -484,72 +241,6 @@ jobs:
           wget -qO /tmp/ub_fix.patch "$PATCH_URL" 2>/dev/null && \
             patch -p1 --forward < /tmp/ub_fix.patch || true
           echo "Unicode fix applied (or already present)"
- 
-      - name: Configure ZRAM Writeback
-        if: inputs.zram_writeback
-        working-directory: kernel_workspace
-        run: |
-          echo "Enabling ZRAM Writeback support..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_ZRAM_WRITEBACK=y
-          CONFIG_ZRAM_MEMORY_TRACKING=y
-          EOF
- 
-      - name: Configure SchedUtil Optimizations
-        if: inputs.schedutil_opt
-        working-directory: kernel_workspace
-        run: |
-          echo "Applying SchedUtil optimizations..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
-          CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y
-          EOF
-          # Уменьшаем rate_limit_us для более быстрого отклика
-          SU_C="common/kernel/sched/cpufreq_schedutil.c"
-          if [ -f "$SU_C" ]; then
-            # Меняем дефолтный rate limit с 1000us на 500us
-            sed -i 's/LATENCY_MULTIPLIER\s*=\s*1000/LATENCY_MULTIPLIER = 1000/' "$SU_C" 2>/dev/null || true
-          fi
-
-      - name: Prepare CPU Optimizations (Oryon SM8750)
-        if: inputs.cpu_opt
-        run: |
-          echo "Setting up CPU tuning..."
-          
-          if [[ "${{ github.event.inputs.clang_version }}" == "clang18" ]]; then
-            echo "Clang 18 detected: Using generic armv9-a (oryon-1 not supported)."
-            echo "EXTRA_CFLAGS=-march=armv9-a+crypto+dotprod" >> $GITHUB_ENV
-          else
-            echo "Modern/ZyC Clang detected: Using oryon-1 with stability mitigations."
-            echo "EXTRA_CFLAGS=-mcpu=oryon-1 -fno-strict-aliasing -fno-delete-null-pointer-checks" >> $GITHUB_ENV
-          fi
-          
-          cd kernel_workspace/common
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_ARM64_ERRATUM_2658417=y
-          CONFIG_ARCH_QCOM=y
-          CONFIG_HZ_300=y
-          CONFIG_PREEMPT=y
-          CONFIG_NO_HZ_IDLE=y
-          EOF
-          echo "✅ Oryon flags prepared."
-
-      - name: F2FS Optimizations
-        if: inputs.f2fs_opt
-        working-directory: kernel_workspace
-        run: |
-          echo "Enabling F2FS optimizations..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_F2FS_FS=y
-          CONFIG_F2FS_STAT_FS=y
-          CONFIG_F2FS_FS_XATTR=y
-          CONFIG_F2FS_FS_POSIX_ACL=y
-          CONFIG_F2FS_FS_SECURITY=y
-          CONFIG_F2FS_FS_COMPRESSION=y
-          CONFIG_F2FS_FS_LZO=y
-          CONFIG_F2FS_FS_LZ4=y
-          CONFIG_F2FS_FS_ZSTD=y
-          EOF
 
       - name: Enable WireGuard
         if: inputs.wireguard
@@ -559,120 +250,6 @@ jobs:
           cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_WIREGUARD=y
           EOF
-
-      - name: Enable Full Netfilter
-        if: inputs.netfilter_full
-        working-directory: kernel_workspace
-        run: |
-          echo "Enabling full Netfilter support..."
-          cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_NF_CONNTRACK=y
-          CONFIG_NF_CONNTRACK_MARK=y
-          CONFIG_NF_CONNTRACK_ZONES=y
-          CONFIG_NF_CONNTRACK_TIMESTAMP=y
-          CONFIG_NF_CONNTRACK_EVENTS=y
-          CONFIG_NF_CONNTRACK_TIMEOUT=y
-          CONFIG_NF_CONNTRACK_LABELS=y
-          CONFIG_NF_NAT=y
-          CONFIG_NF_NAT_MASQUERADE=y
-          CONFIG_NETFILTER_XT_MATCH_HASHLIMIT=y
-          CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
-          CONFIG_NETFILTER_XT_MATCH_CONNLIMIT=y
-          CONFIG_NETFILTER_XT_MATCH_STATE=y
-          CONFIG_NETFILTER_XT_TARGET_MASQUERADE=y
-          CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
-          EOF
-
-      - name: Enable LRNG v59
-        if: inputs.lrng_enable
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling LRNG (Linux Random Number Generator) v59..."
-          # LRNG patch from Epicmann24/SukiSU
-          git clone --depth=1 https://github.com/smuellerDD/lrng.git /tmp/lrng_src
-          cp -r /tmp/lrng_src/drivers/char/lrng/* drivers/char/lrng/
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_LRNG=y
-          CONFIG_LRNG_SHA256=y
-          CONFIG_LRNG_COLLECTION_SIZE=1024
-          CONFIG_LRNG_HEALTH_TESTS=y
-          CONFIG_LRNG_RCT_CUTOFF=31
-          CONFIG_LRNG_APT_CUTOFF=325
-          CONFIG_LRNG_IRQ=y
-          CONFIG_LRNG_CONTINUOUS_COMPRESSION_ENABLED=y
-          EOF
-
-      - name: Enable Wakelock Blocker
-        if: inputs.wakelock_blocker
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling Wakelock Blocker..."
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_PM_WAKELOCKS=y
-          CONFIG_PM_WAKELOCKS_GC=y
-          CONFIG_PM_WAKELOCKS_LIMIT=100
-          EOF
-          # Патч для принудительного блокирования известных wakelocks
-          WAKELOCK_C="kernel/power/wakelock.c"
-          if [ -f "$WAKELOCK_C" ]; then
-            # Добавляем список заблокированных wakelocks от cctv18/Epicmann24
-            cat >> "$WAKELOCK_C" << 'WLEOF'
-          /* palaziks: wakelock blocker list */
-          static const char * const blocked_wakelocks[] = {
-              "WLAN_pm_wlock",
-              "IPA_WS",
-              "qcom_rx_wakelock",
-              "event0",
-          };
-          WLEOF
-          fi
-
-      - name: Configure BBR & Brutal
-        run: |
-          if [[ "${{ github.event.inputs.bbr_enable }}" != "false" ]]; then
-            echo "Adding TCP Congestion Algorithms..."
-            cd kernel_workspace
-            echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_CUBIC=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_VEGAS=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_NV=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_WESTWOOD=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_HTCP=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_TCP_CONG_BRUTAL=y" >> ./common/arch/arm64/configs/gki_defconfig
-            if [[ "${{ github.event.inputs.bbr_enable }}" == "default" ]]; then
-              echo "Setting BBR as default algorithm..."
-              echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> ./common/arch/arm64/configs/gki_defconfig
-            else
-              echo "CONFIG_DEFAULT_TCP_CONG=cubic" >> ./common/arch/arm64/configs/gki_defconfig
-            fi
-          fi
-
-      - name: Configure LTO
-        run: |
-          cd kernel_workspace
-          if [[ "${{ github.event.inputs.lto_type }}" == "none" ]]; then
-            echo "CONFIG_LTO_CLANG_NONE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          elif [[ "${{ github.event.inputs.lto_type }}" == "full" ]]; then
-            echo "CONFIG_LTO_CLANG_FULL=y" >> ./common/arch/arm64/configs/gki_defconfig
-          else
-            echo "CONFIG_LTO_CLANG_THIN=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-
-      - name: Configure ADIOS IO
-        if: inputs.adios_enable
-        run: |
-          echo "Enabling ADIOS IO Scheduler..."
-          cd kernel_workspace
-          echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_MQ_IOSCHED_DEFAULT_ADIOS=y" >> ./common/arch/arm64/configs/gki_defconfig
-
-      - name: Configure Re-Kernel
-        if: inputs.rekernel_enable
-        run: |
-          echo "Enabling Re-Kernel Support..."
-          cd kernel_workspace
-          echo "CONFIG_REKERNEL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
       - name: Configure Baseband Guard
         if: inputs.baseband_guard
@@ -701,71 +278,6 @@ jobs:
         uses: pierotofy/set-swap-space@master
         with:
           swap-size-gb: 10
-
-      - name: "Clone WildKernel kernel_patches (for HMBIRD etc)"
-        if: inputs.hmbird_enable
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE"
-          rm -rf kernel_patches || true
-          git config --global url."https://x-access-token:${{ github.token }}@github.com/".insteadOf "https://github.com/"
-          git clone --depth=1 https://github.com/TheWildJames/kernel_patches.git kernel_patches
-
-      - name: "Apply WildKernel patches (HMBIRD/overwriter) (best-effort)"
-        if: inputs.hmbird_enable
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE/kernel_workspace/common"
-
-          apply_best_effort() {
-            local p="$1"
-            if [ ! -f "$p" ]; then
-              echo "⚠️ Skipped (missing): $(basename "$p")"
-              return 0
-            fi
-
-            local tmp=""
-            if grep -q "GIT binary patch" "$p"; then
-              tmp="$p"
-            else
-              tmp="$(mktemp)"
-              tr -d '\r' < "$p" > "$tmp"
-            fi
-
-            if patch -p1 -F 3 -N --silent < "$tmp"; then
-              echo "✅ Applied: $(basename "$p")"
-            elif git apply --reject --whitespace=nowarn "$tmp" >/dev/null 2>&1; then
-              echo "✅ Applied (git): $(basename "$p")"
-            else
-              echo "⚠️ Skipped (does not apply cleanly): $(basename "$p")"
-            fi
-
-            if [ "$tmp" != "$p" ]; then rm -f "$tmp"; fi
-            return 0
-          }
-
-          echo "Applying HMBIRD-related patches (best-effort)..."
-          HMBIRD_DIR="$GITHUB_WORKSPACE/kernel_patches/oneplus/hmbird"
-
-          # Pick the most likely FengChi patch (apply at most ONE)
-          pick_first() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return 0; }; done; return 1; }
-          FENGCHI="$(pick_first             "$HMBIRD_DIR/fengchi_PJZ110_OOS15.patch"             "$HMBIRD_DIR/fengchi_PJZ110_OOS16.patch"             "$HMBIRD_DIR/fengchi_OP13_OOS15.patch"             "$HMBIRD_DIR/fengchi_OP13_OOS16.patch"           )" || true
-          if [ -n "${FENGCHI:-}" ]; then
-            echo "→ FengChi: $(basename "$FENGCHI")"
-            apply_best_effort "$FENGCHI"
-          else
-            echo "⚠️ No FengChi patch matched (skipping fengchi)"
-          fi
-
-          apply_best_effort "$HMBIRD_DIR/overwriter.patch"
-          apply_best_effort "$HMBIRD_DIR/hmbird_config.patch"
-
-          # Optional common optimizations used by WildKernel action (best-effort)
-          COMMON_DIR="$GITHUB_WORKSPACE/kernel_patches/common"
-          apply_best_effort "$COMMON_DIR/optimized_mem_operations.patch"
-          apply_best_effort "$COMMON_DIR/file_struct_8bytes_align.patch"
 
       - name: "Fix permissions for overwriter scripts"
         shell: bash
@@ -883,18 +395,6 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
           
-      - name: Apply KPM to Kernel
-        if: ${{ github.event.inputs.KPM == 'true' }}
-        run: |
-          echo "Applying SukiSU Ultra KPM patch..."
-          cd kernel_workspace/common/out/arch/arm64/boot
-          curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.13.0/patch_linux
-          chmod +x patch_linux
-          ./patch_linux
-          rm -f Image
-          mv oImage Image
-          echo "✅ KPM patch applied to kernel image."
-          
       - name: Clone AnyKernel3 and Package ZIP
         id: create_zip
         run: |
@@ -907,10 +407,7 @@ jobs:
             echo "Kernel Image not found, build may have failed."
             exit 1
           fi
-          KSU_TYPENAME="ReSukiSU"
-          if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
-            wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip || true
-          fi
+          KSU_TYPENAME="NON-ROOT"
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_palaziks.zip
             FULL_VERSION=${{ github.event.inputs.kernel_version }}-palaziks
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_${{ env.KERNEL_NAME }}.zip
@@ -929,13 +426,6 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
-          echo "susfs: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
-          echo "KPM: ${{ github.event.inputs.KPM }}" >> ./ak3.log
-          echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
-          echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
-          echo "BBR&Brutal: ${{ github.event.inputs.bbr_enable }}" >> ./ak3.log
-          echo "ADIOS: ${{ github.event.inputs.adios_enable }}" >> ./ak3.log
-          echo "Re-Kernel: ${{ github.event.inputs.rekernel_enable }}" >> ./ak3.log
           echo "BBG: ${{ github.event.inputs.baseband_guard }}" >> ./ak3.log
           zip -z ../$AK3_NAME < ./ak3.log
 
@@ -957,29 +447,14 @@ jobs:
           REPO="${{ github.repository }}"
           TIME_NOW="$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S') CST"
 
-          KSU_TYPE="ReSukiSU"
-          KSU_DISPLAY="ReSukiSU"
+          KSU_TYPE="NON-ROOT"
+          KSU_DISPLAY="NON-ROOT"
           KSUVER="${{ env.KSUVER }}"
           SUFFIX="-palaziks-ShiftPorts"
-          LTO="${{ github.event.inputs.lto_type }}"
-          SUSFS="${{ github.event.inputs.SUSFS }}"
-          KPM="${{ github.event.inputs.KPM }}"
-          BBR="${{ github.event.inputs.bbr_enable }}"
-          ADIOS="${{ github.event.inputs.adios_enable }}"
           BBG="${{ github.event.inputs.baseband_guard }}"
-          LZ4="${{ github.event.inputs.lz4_enable }}"
-          LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
-          MM="true"
-          HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
-          ZWB="${{ github.event.inputs.zram_writeback }}"
           SCHED="${{ github.event.inputs.schedutil_opt }}"
           CLANG="${{ github.event.inputs.clang_version }}"
-          CPU_OPT="${{ github.event.inputs.cpu_opt }}"
-          F2FS="${{ github.event.inputs.f2fs_opt }}"
-          WG="${{ github.event.inputs.wireguard }}"
-          LRNG="${{ github.event.inputs.lrng_enable }}"
-          WLB="${{ github.event.inputs.wakelock_blocker }}"
 
           if [ "$BUILD_STATUS" = "success" ]; then
             STATUS_EMOJI="✅"; STATUS_TEXT="SUCCESS"
@@ -1000,13 +475,8 @@ jobs:
             export TG_TIME_NOW="$TIME_NOW"
             export TG_RUN_URL="$RUN_URL"
             export TG_REPO="$REPO"
-            export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
-            export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
-            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
-            export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
-            export TG_SCHED="$SCHED" TG_CLANG="$CLANG"
-            export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
-            export TG_LRNG="$LRNG" TG_WLB="$WLB"
+            export TG_BBG="$BBG"
+            export TG_CLANG="$CLANG"
 
             TELEGRAPH_URL=$(python3 << 'PYEOF'
           import json, urllib.request, urllib.parse, os
@@ -1063,18 +533,7 @@ jobs:
                   feat(e("TG_BBR") != "false" and "true" or "false",  f"BBR/Brutal ({e('TG_BBR')})"),
                   feat(e("TG_ADIOS"),  "ADIOS IO Scheduler"),
                   feat(e("TG_BBG"),    "Baseband Guard"),
-                  feat(e("TG_LZ4"),    "LZ4 1.10.0 + ZSTD 1.5.7"),
-                  feat(e("TG_LZ4KD"), "LZ4KD ZRAM"),
-                  feat(e("TG_MM"),     "Multi-Manager Support"),
-                  feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
-                  feat(e("TG_ZWB"),    "ZRAM Writeback"),
-                  feat(e("TG_SCHED"), "SchedUtil Optimizations"),
-                  feat(e("TG_CPU_OPT"), "Oryon CPU Optimizations"),
-                  feat(e("TG_F2FS"), "F2FS Optimizations"),
-                  feat(e("TG_WG"), "WireGuard VPN"),
-                  feat(e("TG_LRNG"), "LRNG v59"),
-                  feat(e("TG_WLB"), "Wakelock Blocker"),
               ]},
               {"tag": "hr"},
               {"tag": "h4", "children": ["📥 Installation"]},
@@ -1247,7 +706,7 @@ jobs:
           echo "TIME_FORM=$TIME_FORM" >> $GITHUB_ENV
           TAG_HEAD="OPPO-OPlus-Realme-build"
           echo "TAG_HEAD=$TAG_HEAD" >> $GITHUB_ENV
-          KSU_TYPENAME="ReSukiSU"
+          KSU_TYPENAME="NON-ROOT"
           echo "KSU_TYPENAME=$KSU_TYPENAME" >> $GITHUB_ENV
           
       - name: Create Release
@@ -1257,34 +716,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 OnePlus 13 ReSukiSU SM8750 Generic Kernel | Build Info
+          ### 📱 OnePlus 13 NON-ROOT SM8750 Generic Kernel | Build Info
           - **Kernel Version:** ${{ env.FULL_VERSION }}
           - **Build Time:** ${{ env.TIME_FORM }}
           - **Device:** Snapdragon 8 Elite Generic ${{ github.event.inputs.kernel_version }} Kernel (Based on OnePlus 13 ${{ github.event.inputs.kernel_version }} Official OKI source)
-          - **KSU Branch:** ReSukiSU
-          - **SuSFS Support:** ${{ github.event.inputs.SUSFS }}
-          - **KPM Support:** ${{ github.event.inputs.KPM }}
-          - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
-          - **LZ4KD Support:** ${{ github.event.inputs.lz4kd_enable }}
-          - **BBR/Brutal TCP Algorithms:** ${{ github.event.inputs.bbr_enable }}
-          - **ADIOS IO Scheduler:** ${{ github.event.inputs.adios_enable }}
-          - **Re-Kernel Support:** ${{ github.event.inputs.rekernel_enable }}
+          - **KSU Branch:** NON-ROOT
           - **Baseband Guard Support:** ${{ github.event.inputs.baseband_guard }}
-          - **HMBIRD SCX Scheduler:** ${{ github.event.inputs.hmbird_enable }}
           - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
-          - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
-          - **SchedUtil Optimizations:** ${{ github.event.inputs.schedutil_opt }}
-          - **Oryon CPU Optimizations:** ${{ github.event.inputs.cpu_opt }}
-          - **F2FS Optimizations:** ${{ github.event.inputs.f2fs_opt }}
-          - **WireGuard VPN:** ${{ github.event.inputs.wireguard }}
-          - **LRNG v59:** ${{ github.event.inputs.lrng_enable }}
-          - **Wakelock Blocker:** ${{ github.event.inputs.wakelock_blocker }}
-          
-          - ReSukiSU管理器下载：[ReSukiSU_CI](https://github.com/cctv18/ReSukiSU_CI/releases)
-          - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
-          - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
-          - KSU原版管理器下载：[KernelSU](https://github.com/tiann/KernelSU/releases)
-          - WildKSU管理器下载: [WildKSU](https://github.com/WildKernels/Wild_KSU/releases)
           
           ### ⏫️ Update Notes:
           - Updated ${{ env.KSU_TYPENAME }} to the latest version (${{ needs.build.outputs.ksuver }})
