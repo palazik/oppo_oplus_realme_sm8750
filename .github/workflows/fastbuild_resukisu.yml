@@ -1,4 +1,4 @@
-name: ReSukiSU Ultra OP13 Build
+name: FastBuild ReSukiSU Ultra OP13 Build
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.kernel_version }}
