@@ -177,7 +177,7 @@ jobs:
           sudo apt purge man-db &&
           sudo rm -rf /var/lib/man-db/auto-update &&
           sudo apt update &&
-          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 &
+          sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache aria2 dos2unix &
 
           if [[ ${{ github.event.inputs.kernel_version }} == "6.6.89" ]]; then
             echo "Cloning source repository..."
