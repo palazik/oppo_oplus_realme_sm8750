@@ -1,4 +1,8 @@
-name: SukiSU Ultra OP13 Build
+name: SukiSU Ultra Ultra OP13 Build
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.kernel_version }}
+  cancel-in-progress: true
 
 env:
   TZ: Asia/Shanghai
@@ -14,22 +18,22 @@ on:
         description: 'Choose kernel version to build'
         required: true
         type: choice
-        default: '6.6.89'
+        default: '6.6.118'
         options:
+          - '6.6.118'
           - '6.6.89'
-          - '6.6.100'
-          - '6.6.102'
           - '6.6.111'
+          - '6.6.100'
       SUSFS:
         description: 'Enable SuSFS (Enhances hide environment)'
         required: true
         type: boolean
         default: true
       KPM:
-        description: 'Enable KPM (builtin for (re)sukisu, kpn for independent KPM)'
+        description: 'Enable KPM'
         required: true
         type: boolean
-        default: true
+        default: false
       clang_version:
         description: 'Choose clang version for building kernel'
         required: true
@@ -89,8 +93,13 @@ on:
           - 'none'
           - 'thin'
           - 'full'
+      fengchi:
+        description: 'Enable Fengchi Optimization'
+        required: true
+        type: boolean
+        default: true
       hmbird_enable:
-        description: 'Enable HMBIRD SCX Scheduler (SM8750 perf tweak)'
+        description: 'Enable HMBIRD (Needs disabled Fengchi, Fengchi better)'
         required: true
         type: boolean
         default: false
@@ -108,7 +117,7 @@ on:
         description: 'Enable SchedUtil optimizations (better CPU governor)'
         required: true
         type: boolean
-        default: true
+        default: false
       telegram_notify:
         description: 'Send Telegram notification after build'
         required: true
@@ -118,7 +127,7 @@ on:
         description: 'CPU Optimizations (Oryon MCPU tuning for SM8750)'
         required: true
         type: boolean
-        default: true
+        default: false
       f2fs_opt:
         description: 'F2FS Optimizations (better flash storage performance)'
         required: true
@@ -184,9 +193,9 @@ jobs:
             mv OnePlus_Kernel_Backport-* common &&
             rm -rf common.zip &
 
-          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.102" ]]; then
+          elif [[ ${{ github.event.inputs.kernel_version }} == "6.6.118" ]]; then
             echo "Cloning source repository..."
-            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.102_oneplus13_coloros16.0.5.zip -o common.zip && 
+            curl -L https://github.com/palazik/OnePlus_Kernel_Backport/archive/refs/heads/6.6.118_oneplus13_coloros16.0.5.zip -o common.zip && 
             unzip -q common.zip && 
             mv OnePlus_Kernel_Backport-* common &&
             rm -rf common.zip &
@@ -285,12 +294,13 @@ jobs:
           echo "Current Build Kernel Version: ${{ github.event.inputs.kernel_version }}"
 
       - name: Restore CCache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         id: ccache-restore
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
+            ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}-
             ${{ env.CCACHE_KEY }}-${{ runner.os }}-
             ${{ env.CCACHE_KEY }}-
 
@@ -354,7 +364,11 @@ jobs:
       - name: ⚡ Setup SukiSU Ultra | 配置 SukiSU Ultra
         run: |
           cd kernel_workspace/common
+
+          # 下载并执行设置脚本
+
           echo "🛠️ 正在设置SukiSU Ultra..."
+
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s builtin
 
           cd KernelSU
@@ -362,8 +376,11 @@ jobs:
           export KSUVER=$(expr $KSU_VERSION_COUNT + 37185)
           echo "KSUVER=$KSUVER" >> $GITHUB_ENV
 
-          # Use recursive grep to find the API version regardless of path
-          KSU_API_VERSION=$(grep -r "KSU_VERSION_API :=" . | head -n 1 | cut -d'=' -f2 | tr -d '[:space:]')
+          for i in {1..3}; do
+            KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Kbuild" | \
+              grep -m1 "KSU_VERSION_API :=" | cut -d'=' -f2 | tr -d '[:space:]')
+            [ -n "$KSU_API_VERSION" ] && break || sleep 2
+          done
 
           if [ -z "$KSU_API_VERSION" ]; then
             echo "❌ 错误：未能获取 KSU_API_VERSION" >&2
@@ -371,34 +388,66 @@ jobs:
           fi
 
           KSU_COMMIT_HASH=$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/builtin | cut -f1 | cut -c1-8)
-          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks"
+          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@chenhua13"
 
-          # Hardcode the version badge into whatever Kbuild file we found
-          find . -name "Kbuild" -exec sed -i '/define get_ksu_version_full/,/endef/d' {} +
-          find . -name "Kbuild" -exec sed -i '/KSU_VERSION_API :=/d' {} +
-          find . -name "Kbuild" -exec sed -i '/KSU_VERSION_FULL :=/d' {} +
+          sed -i '/define get_ksu_version_full/,/endef/d' kernel/Kbuild
+          sed -i '/KSU_VERSION_API :=/d' kernel/Kbuild
+          sed -i '/KSU_VERSION_FULL :=/d' kernel/Kbuild
 
-          # Create the new version header in the root Kbuild
-          KBUILD_FILE=$(find . -name "Kbuild" | head -n 1)
           TMP_FILE=$(mktemp)
           while IFS= read -r line; do
             echo "$line" >> "$TMP_FILE"
             if echo "$line" | grep -q 'REPO_OWNER :='; then
               cat >> "$TMP_FILE" <<EOF
           define get_ksu_version_full
-          v\$\$1-${KSU_COMMIT_HASH}@palaziks
+          v\\\$\$1-${KSU_COMMIT_HASH}@chenhua13
           endef
 
           KSU_VERSION_API := ${KSU_API_VERSION}
           KSU_VERSION_FULL := ${KSU_VERSION_FULL}
           EOF
             fi
-          done < "$KBUILD_FILE"
-          mv "$TMP_FILE" "$KBUILD_FILE"
+          done < kernel/Kbuild
+          mv "$TMP_FILE" kernel/Kbuild
 
-          echo "✅ SukiSU Ultra version $KSU_VERSION_FULL configured."
+          echo "✅ SukiSU Ultra 版本信息配置完成"
 
-      - name: Configure KSU & Misc
+      - name: 🔧 Setup Patches | 配置补丁
+        run: |
+          cd kernel_workspace
+
+          echo "⬇️ 克隆所需补丁..."
+
+          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then          
+            git clone https://github.com/cctv18/susfs4oki.git -b oki-android15-6.6
+          fi
+
+          git clone https://github.com/mrcxlinux/kernel_patches.git
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git
+
+          echo "📝 复制补丁文件..."
+
+          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
+            cp susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
+            cp susfs4oki/kernel_patches/fs/* ./common/fs/
+            cp susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
+          else
+            cp kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
+          fi
+
+          cd ./common
+
+          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
+            echo "📦 应用SUSFS补丁..."
+            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
+          else
+            echo "📦 应用MANUAL_HOOK补丁..."
+            patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
+          fi
+
+          echo "✅ SuSFS Added"
+
+      - name: Apply kernel patches
         run: |
           cd kernel_workspace
           DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
@@ -419,71 +468,28 @@ jobs:
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
           echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
-          # Support Mountify-style tmpfs xattrs (as in your base workflow)
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
-          # Kprobes
-          echo "CONFIG_KPROBES=y" >> "$DEFCONFIG"
-          echo "CONFIG_KPROBE_EVENTS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KSU_KPROBES_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_DYNAMIC_FTRACE=y" >> "$DEFCONFIG"
-
-      - name: 🔧 Setup Patches | 配置补丁
-        run: |
-          cd kernel_workspace
-
-          echo "⬇️ 克隆所需补丁..."
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then          
-            git clone https://gitlab.com/cctv18/susfs4oki.git -b oki-android15-6.6
-          fi
-
-          git clone https://github.com/mrcxlinux/kernel_patches.git
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git
-
-          cd common
-
-          echo "📝 复制补丁文件..."
-
           if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            cp ../susfs4oki/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-            cp ../susfs4oki/kernel_patches/fs/* ./common/fs/
-            cp ../susfs4oki/kernel_patches/include/linux/* ./common/include/linux/
-            sed -i '/ksu_handle/d' ./common/50_add_susfs_in_gki-android15-6.6.patch
-          else
-            cp ../kernel_patches/sukisu/scope_min_manual_hooks_v1.9.patch ./common/
+            echo "📦 启用 SUSFS 功能..."
+            echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
+          else 
+            echo "📦 启用 MANUAL_HOOK..."
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-
-          cd ./common
-
-          if [ "${{ github.event.inputs.SUSFS }}" == "true" ]; then
-            echo "📦 应用SUSFS补丁..."
-            patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-          else
-            echo "📦 应用MANUAL_HOOK补丁..."
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.9.patch
-          fi
-
-          echo "✅ SuSFS Added"
-
-      - name: Configure SuSFS
-        if: inputs.SUSFS
-        run: |
-          cd kernel_workspace/common
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
-          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
           
+          # Support Mountify-style tmpfs xattrs (as in your base workflow)
+          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
+
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         if: inputs.lz4_enable
         run: |
@@ -511,26 +517,6 @@ jobs:
           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto
           cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
           patch -p1 -F 3 < lz4kd.patch || true
-
-      - name: Configure HMBIRD SCX Scheduler
-        if: inputs.hmbird_enable
-        working-directory: kernel_workspace/common
-        run: |
-          echo "Enabling HMBIRD SCX (SM8750 scheduler extension)..."
-          # HMBIRD патчи от TheWildJames / Numbersf
-          git clone --depth=1 https://github.com/Numbersf/SCHED_PATCH.git /tmp/hmbird_patch || true
-          if [ -d /tmp/hmbird_patch ]; then
-            # Применяем патч overwriter если есть
-            for p in /tmp/hmbird_patch/*.patch; do
-              [ -f "$p" ] && patch -p1 -F 3 < "$p" || true
-            done
-          fi
-          # Конфиги для HMBIRD
-          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
-          CONFIG_SCHED_CLASS_EXT=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
-          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
-          EOF
  
       - name: Apply Unicode Bypass Fix
         if: inputs.unicode_fix
@@ -556,6 +542,38 @@ jobs:
           cat >> common/arch/arm64/configs/gki_defconfig << 'EOF'
           CONFIG_ZRAM_WRITEBACK=y
           CONFIG_ZRAM_MEMORY_TRACKING=y
+          EOF
+
+      - name: ⚙️ Apply Fengchi (HMBIRD) SCHED Patch
+        if: inputs.hmbird_enable
+        run: |
+          cd kernel_workspace/common
+
+          echo "⬇️ Fetching Fengchi (HMBIRD) patch for SM8750..."
+          git clone https://github.com/Numbersf/SCHED_PATCH.git -b "sm8750" /tmp/sched_patch
+
+          # Explicitly target the OnePlus 13 'b' patch
+          PATCH_FILE="/tmp/sched_patch/fengchi_oneplus_13_b.patch"
+
+          if [[ -f "$PATCH_FILE" ]]; then
+            echo "⚙️ Found patch: fengchi_oneplus_13_b.patch. Applying..."
+            cp "$PATCH_FILE" ./
+            dos2unix fengchi_oneplus_13_b.patch
+            patch -p1 -F 3 < fengchi_oneplus_13_b.patch
+            echo "✅ Perfect Fengchi patch applied successfully!"
+          else
+            echo "⚠️ Specific OP13 patch not found, falling back to OGKI to GKI patch..."
+            sed -i '1iobj-y += hmbird_patch.o' drivers/Makefile
+            wget -q https://github.com/Numbersf/Action-Build/raw/SukiSU-Ultra/patches/hmbird_patch.patch
+            patch -p1 -F 3 < hmbird_patch.patch
+            echo "✅ OGKI to GKI patch applied!"
+          fi
+          
+          # Enable the config flags required for the patch
+          cat >> arch/arm64/configs/gki_defconfig << 'EOF'
+          CONFIG_SCHED_CLASS_EXT=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_BOOST=y
+          CONFIG_OPLUS_FEATURE_HMBIRD_SCHED=y
           EOF
  
       - name: Configure SchedUtil Optimizations
@@ -872,7 +890,7 @@ jobs:
           export CCACHE_NOHASHDIR="true"
           export CCACHE_HARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
-          export CCACHE_MAXSIZE="3G"
+          export CCACHE_MAXSIZE="10G"
           echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "$CCACHE_DIR/ccache.conf"
           
           cd kernel_workspace/common
@@ -947,11 +965,11 @@ jobs:
           df -h
 
       - name: Save New CCache
-        if: inputs.ccache_update || steps.ccache-restore.outputs.cache-hit != 'true'
+        if: success() || github.event.inputs.ccache_update == 'true'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}
+          key: ${{ env.CCACHE_KEY }}-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
           
       - name: Apply KPM to Kernel
         if: ${{ github.event.inputs.KPM == 'true' }}
@@ -977,12 +995,9 @@ jobs:
             echo "Kernel Image not found, build may have failed."
             exit 1
           fi
-          KSU_TYPENAME="KSUNext"
+          KSU_TYPENAME="SukiSU Ultra"
           if [[ "${{ github.event.inputs.lz4kd_enable }}" == "true" ]]; then
             wget https://raw.githubusercontent.com/$GITHUB_REPOSITORY/refs/heads/$GITHUB_REF_NAME/zram.zip || true
-          fi
-          if [[ ${{ github.event.inputs.kpm_enable }} == 'kpn' ]]; then
-            wget https://github.com/cctv18/KPatch-Next/releases/latest/download/kpn.zip || true
           fi
             AK3_NAME=AnyKernel3_${KSU_TYPENAME}_${{ env.KSUVER }}_${{ github.event.inputs.kernel_version }}_palaziks.zip
             FULL_VERSION=${{ github.event.inputs.kernel_version }}-palaziks
@@ -1002,8 +1017,8 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
-          echo "susfs: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
-          echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
+          echo "SuSFS: ${{ github.event.inputs.SUSFS }}" >> ./ak3.log
+          echo "KPM: ${{ github.event.inputs.KPM }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
           echo "LZ4KD: ${{ github.event.inputs.lz4kd_enable }}" >> ./ak3.log
           echo "BBR&Brutal: ${{ github.event.inputs.bbr_enable }}" >> ./ak3.log
@@ -1036,13 +1051,14 @@ jobs:
           SUFFIX="-palaziks-ShiftPorts"
           LTO="${{ github.event.inputs.lto_type }}"
           SUSFS="${{ github.event.inputs.SUSFS }}"
-          KPM="${{ github.event.inputs.kpm_enable }}"
+          KPM="${{ github.event.inputs.KPM }}"
           BBR="${{ github.event.inputs.bbr_enable }}"
           ADIOS="${{ github.event.inputs.adios_enable }}"
           BBG="${{ github.event.inputs.baseband_guard }}"
           LZ4="${{ github.event.inputs.lz4_enable }}"
           LZ4KD="${{ github.event.inputs.lz4kd_enable }}"
           MM="true"
+          FENGCHI="${{ github.event.inputs.fengchi }}"
           HMBIRD="${{ github.event.inputs.hmbird_enable }}"
           UFIX="${{ github.event.inputs.unicode_fix }}"
           ZWB="${{ github.event.inputs.zram_writeback }}"
@@ -1075,7 +1091,7 @@ jobs:
             export TG_REPO="$REPO"
             export TG_SUSFS="$SUSFS" TG_KPM="$KPM" TG_BBR="$BBR"
             export TG_ADIOS="$ADIOS" TG_BBG="$BBG" TG_LZ4="$LZ4"
-            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_HMBIRD="$HMBIRD"
+            export TG_LZ4KD="$LZ4KD" TG_MM="$MM" TG_FENGCHI="$FENGCHI" TG_HMBIRD="$HMBIRD"
             export TG_UFIX="$UFIX" TG_ZWB="$ZWB"
             export TG_SCHED="$SCHED" TG_CLANG="$CLANG"
             export TG_CPU_OPT="$CPU_OPT" TG_F2FS="$F2FS" TG_WG="$WG"
@@ -1139,6 +1155,7 @@ jobs:
                   feat(e("TG_LZ4"),    "LZ4 1.10.0 + ZSTD 1.5.7"),
                   feat(e("TG_LZ4KD"), "LZ4KD ZRAM"),
                   feat(e("TG_MM"),     "Multi-Manager Support"),
+                  feat(e("TG_FENGCHI"), "Fengchi Optimization"),
                   feat(e("TG_HMBIRD"),"HMBIRD SCX Scheduler"),
                   feat(e("TG_UFIX"),   "Unicode Bypass Fix"),
                   feat(e("TG_ZWB"),    "ZRAM Writeback"),
@@ -1273,6 +1290,27 @@ jobs:
             fi
           fi
 
+      - name: 📝 Make ZRAM module | 制作 ZRAM 模块
+        run: |
+          set -e
+          echo "📥 正在下载 zram.zip…"
+          curl -L "https://github.com/cctv18/oppo_oplus_realme_sm8750/raw/refs/heads/main/zram.zip" -o "$GITHUB_WORKSPACE/zram.zip"
+          
+          echo "📦 正在解压…"
+          unzip -q "$GITHUB_WORKSPACE/zram.zip" -d "$GITHUB_WORKSPACE/zram"
+          
+          echo "🔁 正在替换 zram.ko…"
+          find "$GITHUB_WORKSPACE/zram" -name "zram.ko" -exec cp "./kernel_workspace/common/out/drivers/block/zram/zram.ko" {} \;
+          rm -rf $GITHUB_WORKSPACE/zram.zip
+          
+          echo "✅ 完成！"
+          
+      - name: 📤 Upload zram.zip | 上传 zram.zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: zram-module
+          path: ./zram/*
+
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -1314,13 +1352,14 @@ jobs:
           - **Device:** Snapdragon 8 Elite Generic ${{ github.event.inputs.kernel_version }} Kernel (Based on OnePlus 13 ${{ github.event.inputs.kernel_version }} Official OKI source)
           - **KSU Branch:** SukiSU Ultra
           - **SuSFS Support:** ${{ github.event.inputs.SUSFS }}
-          - **KPM Support:** ${{ github.event.inputs.kpm_enable }}
+          - **KPM Support:** ${{ github.event.inputs.KPM }}
           - **LZ4 Support:** ${{ github.event.inputs.lz4_enable }}
           - **LZ4KD Support:** ${{ github.event.inputs.lz4kd_enable }}
           - **BBR/Brutal TCP Algorithms:** ${{ github.event.inputs.bbr_enable }}
           - **ADIOS IO Scheduler:** ${{ github.event.inputs.adios_enable }}
           - **Re-Kernel Support:** ${{ github.event.inputs.rekernel_enable }}
           - **Baseband Guard Support:** ${{ github.event.inputs.baseband_guard }}
+          - **Fengchi Optimization** ${{ github.event.inputs.fengchi }}
           - **HMBIRD SCX Scheduler:** ${{ github.event.inputs.hmbird_enable }}
           - **Unicode Bypass Fix:** ${{ github.event.inputs.unicode_fix }}
           - **ZRAM Writeback:** ${{ github.event.inputs.zram_writeback }}
