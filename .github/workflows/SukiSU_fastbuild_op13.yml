@@ -365,50 +365,54 @@ jobs:
         run: |
           cd kernel_workspace/common
 
-          # 下载并执行设置脚本
-
           echo "🛠️ 正在设置SukiSU Ultra..."
-
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s builtin
 
           cd KernelSU
-          KSU_VERSION_COUNT=$(git rev-list --count main)
+          # Count commits on the current branch (builtin) instead of hardcoding 'main'
+          KSU_VERSION_COUNT=$(git rev-list --count HEAD)
           export KSUVER=$(expr $KSU_VERSION_COUNT + 37185)
           echo "KSUVER=$KSUVER" >> $GITHUB_ENV
 
-          for i in {1..3}; do
-            KSU_API_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Kbuild" | \
-              grep -m1 "KSU_VERSION_API :=" | cut -d'=' -f2 | tr -d '[:space:]')
-            [ -n "$KSU_API_VERSION" ] && break || sleep 2
-          done
+          # Auto-detect whether SukiSU is using Makefile or Kbuild
+          KBUILD_FILE="kernel/Makefile"
+          if [ -f "kernel/Kbuild" ]; then
+            KBUILD_FILE="kernel/Kbuild"
+          fi
+
+          echo "🔍 Extracting API version from local $KBUILD_FILE..."
+          KSU_API_VERSION=$(grep -m1 "KSU_VERSION_API :=" "$KBUILD_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
 
           if [ -z "$KSU_API_VERSION" ]; then
             echo "❌ 错误：未能获取 KSU_API_VERSION" >&2
             exit 1
           fi
 
-          KSU_COMMIT_HASH=$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/builtin | cut -f1 | cut -c1-8)
-          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@chenhua13"
+          # Get the commit hash from the local clone instead of querying GitHub
+          KSU_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
+          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks"
 
-          sed -i '/define get_ksu_version_full/,/endef/d' kernel/Kbuild
-          sed -i '/KSU_VERSION_API :=/d' kernel/Kbuild
-          sed -i '/KSU_VERSION_FULL :=/d' kernel/Kbuild
+          # Remove old version definitions
+          sed -i '/define get_ksu_version_full/,/endef/d' "$KBUILD_FILE"
+          sed -i '/KSU_VERSION_API :=/d' "$KBUILD_FILE"
+          sed -i '/KSU_VERSION_FULL :=/d' "$KBUILD_FILE"
 
+          # Inject new customized version definitions
           TMP_FILE=$(mktemp)
           while IFS= read -r line; do
             echo "$line" >> "$TMP_FILE"
             if echo "$line" | grep -q 'REPO_OWNER :='; then
               cat >> "$TMP_FILE" <<EOF
           define get_ksu_version_full
-          v\\\$\$1-${KSU_COMMIT_HASH}@chenhua13
+          v\$\$1-${KSU_COMMIT_HASH}@palaziks
           endef
 
           KSU_VERSION_API := ${KSU_API_VERSION}
           KSU_VERSION_FULL := ${KSU_VERSION_FULL}
           EOF
             fi
-          done < kernel/Kbuild
-          mv "$TMP_FILE" kernel/Kbuild
+          done < "$KBUILD_FILE"
+          mv "$TMP_FILE" "$KBUILD_FILE"
 
           echo "✅ SukiSU Ultra 版本信息配置完成"
 
