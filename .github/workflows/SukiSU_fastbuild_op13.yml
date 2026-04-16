@@ -1,4 +1,4 @@
-name: SukiSU Ultra Ultra OP13 Build
+name: SukiSU Ultra OP13 Build
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.kernel_version }}
@@ -18,10 +18,10 @@ on:
         description: 'Choose kernel version to build'
         required: true
         type: choice
-        default: '6.6.118'
+        default: '6.6.89'
         options:
-          - '6.6.118'
           - '6.6.89'
+          - '6.6.118'
           - '6.6.111'
           - '6.6.100'
       SUSFS:
