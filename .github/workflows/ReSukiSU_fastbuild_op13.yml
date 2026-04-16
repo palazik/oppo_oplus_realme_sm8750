@@ -513,7 +513,7 @@ jobs:
           EOF
 
       - name: ⚙️ Apply Fengchi (HMBIRD) SCHED Patch
-        if: inputs.hmbird_enable
+        if: inputs.fengchi
         run: |
           cd kernel_workspace/common
 
