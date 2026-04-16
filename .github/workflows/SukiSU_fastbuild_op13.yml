@@ -943,6 +943,14 @@ jobs:
           echo "--- Pre-Build File Timestamps: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
           
+          # 🚑 SURGICAL FIX: Fix SukiSU-Ultra upstream typo
+          echo "🚑 Patching SukiSU-Ultra allowlist.c typo..."
+          ALLOWLIST="drivers/kernelsu/policy/allowlist.c"
+          if [ -f "$ALLOWLIST" ]; then
+            # Comments out the broken #endif specifically at line 342
+            sed -i '342s/^#endif/\/\/ #endif \/\/ Fixed upstream typo/' "$ALLOWLIST"
+          fi
+          
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
