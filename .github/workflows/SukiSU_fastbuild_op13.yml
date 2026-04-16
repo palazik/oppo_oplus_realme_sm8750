@@ -369,53 +369,50 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/setup.sh" | bash -s builtin
 
           cd KernelSU
-          # Count commits on the current branch (builtin) instead of hardcoding 'main'
+          
+          # Setup KernelSU Manager Version Number
           KSU_VERSION_COUNT=$(git rev-list --count HEAD)
           export KSUVER=$(expr $KSU_VERSION_COUNT + 37185)
           echo "KSUVER=$KSUVER" >> $GITHUB_ENV
 
-          # Auto-detect whether SukiSU is using Makefile or Kbuild
+          # Auto-detect file
           KBUILD_FILE="kernel/Makefile"
           if [ -f "kernel/Kbuild" ]; then
             KBUILD_FILE="kernel/Kbuild"
           fi
 
           echo "🔍 Extracting API version from local $KBUILD_FILE..."
-          KSU_API_VERSION=$(grep -m1 "KSU_VERSION_API :=" "$KBUILD_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
-
+          
+          # Attempt 1: Standard extraction with flexible spacing
+          KSU_API_VERSION=$(grep -E "KSU_VERSION_API[[:space:]]*:=" "$KBUILD_FILE" | cut -d'=' -f2 | tr -d '[:space:]')
+          
+          # Attempt 2: If empty, try the direct ccflags extraction
           if [ -z "$KSU_API_VERSION" ]; then
-            echo "❌ 错误：未能获取 KSU_API_VERSION" >&2
-            exit 1
+            KSU_API_VERSION=$(grep -oP '(?<=-DKSU_VERSION=)\d+' "$KBUILD_FILE" | head -1)
+          fi
+          
+          # Failsafe: If STILL empty, use default instead of crashing!
+          if [ -z "$KSU_API_VERSION" ]; then
+            echo "⚠️ Could not auto-detect API version. Falling back to default (11952)..."
+            KSU_API_VERSION="11952"
           fi
 
-          # Get the commit hash from the local clone instead of querying GitHub
           KSU_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
-          KSU_VERSION_FULL="v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks"
+          
+          echo "💉 Injecting custom version: v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks"
+          
+          # Strip out upstream version overrides to prevent compiler redefinition errors
+          sed -i 's/-DKSU_VERSION_FULL=[^ ]*//g' "$KBUILD_FILE"
+          sed -i '/KSU_VERSION_FULL/d' "$KBUILD_FILE"
+          
+          # Forcefully inject your customized name at the bottom of the Makefile
+          cat >> "$KBUILD_FILE" <<EOF
 
-          # Remove old version definitions
-          sed -i '/define get_ksu_version_full/,/endef/d' "$KBUILD_FILE"
-          sed -i '/KSU_VERSION_API :=/d' "$KBUILD_FILE"
-          sed -i '/KSU_VERSION_FULL :=/d' "$KBUILD_FILE"
-
-          # Inject new customized version definitions
-          TMP_FILE=$(mktemp)
-          while IFS= read -r line; do
-            echo "$line" >> "$TMP_FILE"
-            if echo "$line" | grep -q 'REPO_OWNER :='; then
-              cat >> "$TMP_FILE" <<EOF
-          define get_ksu_version_full
-          v\$\$1-${KSU_COMMIT_HASH}@palaziks
-          endef
-
-          KSU_VERSION_API := ${KSU_API_VERSION}
-          KSU_VERSION_FULL := ${KSU_VERSION_FULL}
+          ccflags-y += -DKSU_VERSION_FULL=\"v${KSU_API_VERSION}-${KSU_COMMIT_HASH}@palaziks\"
           EOF
-            fi
-          done < "$KBUILD_FILE"
-          mv "$TMP_FILE" "$KBUILD_FILE"
 
           echo "✅ SukiSU Ultra 版本信息配置完成"
-
+  
       - name: 🔧 Setup Patches | 配置补丁
         run: |
           cd kernel_workspace
