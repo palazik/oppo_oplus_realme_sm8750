@@ -1,3 +1,4 @@
+
 name: SukiSU Ultra OP13 Build
 
 concurrency:
@@ -551,16 +552,16 @@ jobs:
           cd kernel_workspace/common
 
           echo "⬇️ Fetching Fengchi (HMBIRD) patch for SM8750..."
-          git clone https://github.com/Numbersf/SCHED_PATCH.git -b "sm8750" /tmp/sched_patch
+          git clone https://github.com/TheWildJames/kernel_patches.git -b "sm8750" /tmp/sched_patch
 
           # Explicitly target the OnePlus 13 'b' patch
-          PATCH_FILE="/tmp/sched_patch/fengchi_oneplus_13_b.patch"
+          PATCH_FILE="/tmp/oneplus/hmbird/fengchi_OP13_OOS16.patch"
 
           if [[ -f "$PATCH_FILE" ]]; then
-            echo "⚙️ Found patch: fengchi_oneplus_13_b.patch. Applying..."
+            echo "⚙️ Found patch: fengchi_OP13_OOS16.patch. Applying..."
             cp "$PATCH_FILE" ./
-            dos2unix fengchi_oneplus_13_b.patch
-            patch -p1 -F 3 < fengchi_oneplus_13_b.patch
+            dos2unix fengchi_OP13_OOS16.patch
+            patch -p1 -F 3 < fengchi_OP13_OOS16.patch
             echo "✅ Perfect Fengchi patch applied successfully!"
           else
             echo "⚠️ Specific OP13 patch not found, falling back to OGKI to GKI patch..."
