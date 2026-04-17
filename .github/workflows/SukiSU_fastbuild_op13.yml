@@ -221,7 +221,7 @@ jobs:
             # Match it with Official Google Build Tools for 6.6 GKI
             echo "Fetching matching Google Build Tools..." &&
             curl -L "https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang20-r547379/build-tools.zip" -o build-tools.zip &&
-            unzip -q build-tools &&
+            unzip -q build-tools.zip &&
             rm -rf build-tools.zip &
 
           elif [[ ${{ github.event.inputs.clang_version }} == "zyc_clang" ]]; then
@@ -489,10 +489,6 @@ jobs:
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
-          # Support Mountify-style tmpfs xattrs (as in your base workflow)
-          echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
 
       - name: Apply LZ4 1.10.0 & ZSTD 1.5.7 Patches
         if: inputs.lz4_enable
@@ -859,6 +855,7 @@ jobs:
           apply_best_effort "$COMMON_DIR/file_struct_8bytes_align.patch"
 
       - name: "Fix permissions for overwriter scripts"
+        if: inputs.hmbird_enable
         shell: bash
         run: |
           set -euo pipefail
@@ -1054,6 +1051,7 @@ jobs:
       - name: Send Telegram Notification
         if: inputs.telegram_notify && always()
         env:
+          TELEGRAPH_TOKEN: ${{ secrets.TELEGRAPH_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
@@ -1201,7 +1199,7 @@ jobs:
           ]
 
           data = {
-              "access_token": "b968da509d524a21f53f1f2db42fa18d5c0d54a1b8e4b65c",
+              "access_token": os.environ.get("TELEGRAPH_TOKEN", ""),
               "title": f"palaziks kernel — OP13 {e('TG_KERNEL_VERSION')}-{e('TG_SUFFIX')} #{e('TG_BUILD_NUM')}",
               "author_name": "palaziks",
               "author_url": f"https://github.com/{e('TG_REPO')}",
@@ -1324,7 +1322,7 @@ jobs:
           echo "✅ 完成！"
           
       - name: 📤 Upload zram.zip | 上传 zram.zip
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: zram-module
           path: ./zram/*
