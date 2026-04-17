@@ -128,7 +128,7 @@ on:
         description: 'CPU Optimizations (Oryon MCPU tuning for SM8750)'
         required: true
         type: boolean
-        default: false
+        default: true
       f2fs_opt:
         description: 'F2FS Optimizations (better flash storage performance)'
         required: true
@@ -463,6 +463,8 @@ jobs:
             echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
+          # 🪝 Force SukiSU Native Inline Hooks
+          echo "CONFIG_KSU_INLINE_HOOK=y" >> "$DEFCONFIG"
           if [ "${{ github.event.inputs.KPM }}" == "true" ]; then
             echo "📦 启用 KPM..."
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
