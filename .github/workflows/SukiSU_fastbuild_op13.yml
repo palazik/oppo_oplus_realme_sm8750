@@ -1201,7 +1201,7 @@ jobs:
           ]
 
           data = {
-              "access_token": "22a4cc6786005bcd25ba82a013490f64",
+              "access_token": "b968da509d524a21f53f1f2db42fa18d5c0d54a1b8e4b65c",
               "title": f"palaziks kernel — OP13 {e('TG_KERNEL_VERSION')}-{e('TG_SUFFIX')} #{e('TG_BUILD_NUM')}",
               "author_name": "palaziks",
               "author_url": f"https://github.com/{e('TG_REPO')}",
